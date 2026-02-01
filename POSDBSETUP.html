@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TEACAP POS + Real-time Supabase</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900" x-data="posApp()" x-init="init()">
+
+    <header class="bg-white border-b px-6 py-4 sticky top-0 z-30 flex justify-between items-center shadow-sm">
+        <div>
+            <h1 class="text-2xl font-black text-pink-500 tracking-tight italic">TEA<span class="text-slate-800">CAP</span></h1>
+            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Real-Time Cloud POS</p>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <div @click="syncToSupabase()" class="cursor-pointer group flex flex-col items-end">
+                <span :class="!isOnline ? 'text-rose-500' : (isSyncing ? 'text-blue-500' : 'text-emerald-500')" 
+                      class="text-[10px] font-black uppercase flex items-center gap-1 transition-colors">
+                    
+                    <template x-if="isSyncing">
+                        <span class="w-2 h-2 border-2 border-t-transparent border-current rounded-full animate-spin"></span>
+                    </template>
+                    <template x-if="!isSyncing">
+                        <span class="w-2 h-2 rounded-full bg-current animate-pulse"></span>
+                    </template>
+
+                    <span x-text="!isOnline ? 'Working Offline' : (isSyncing ? 'Syncing Now...' : 'Cloud Connected')"></span>
+                </span>
+                <p class="text-[9px] text-slate-400 group-hover:text-pink-500 transition-colors">
+                    Pending Backup: <span x-text="unsyncedCount"></span>
+                </p>
+            </div>
+
+            <div class="bg-pink-50 px-4 py-2 rounded-2xl border border-pink-100 text-right">
+                <p class="text-[10px] uppercase text-pink-400 font-bold">Daily Profit</p>
+                <p class="text-xl font-mono font-bold text-pink-600" x-text="formatCurrency(netProfit)"></p>
+            </div>
+        </div>
+    </header>
+
+    <main class="pb-32 p-4 max-w-6xl mx-auto">
+        
+        <div x-show="activeTab === 'pos'" x-cloak class="flex flex-col lg:flex-row gap-6">
+            <div class="flex-1">
+                <div class="flex gap-2 mb-6 overflow-x-auto hide-scrollbar pb-2">
+                    <template x-for="cat in categories">
+                        <button @click="activeCat = cat" 
+                            :class="activeCat === cat ? 'bg-pink-500 text-white shadow-lg' : 'bg-white text-slate-600 border'"
+                            class="px-6 py-2 rounded-full font-bold text-sm transition-all whitespace-nowrap"
+                            x-text="cat">
+                        </button>
+                    </template>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <template x-for="product in filteredProducts" :key="product.id">
+                        <button @click="openCustomizer(product)"
+                            class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all text-left relative group">
+                            <span class="absolute top-3 right-3 text-2xl group-hover:scale-125 transition-transform" x-text="product.emoji"></span>
+                            <p class="font-bold text-slate-800 pr-8" x-text="product.name"></p>
+                            <p class="text-pink-500 font-black mt-1" x-text="formatCurrency(product.price)"></p>
+                            <p class="text-[10px] text-slate-400 mt-2 italic">Stock: <span x-text="product.stock"></span></p>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <div class="w-full lg:w-96 bg-slate-900 rounded-[2.5rem] p-6 text-white shadow-2xl sticky top-24 h-[calc(100vh-10rem)] flex flex-col">
+                <h2 class="text-xl font-bold mb-6 flex items-center justify-between">
+                    Basket <span class="text-xs bg-white/20 px-3 py-1 rounded-full" x-text="cart.length + ' items'"></span>
+                </h2>
+                
+                <div class="flex-1 overflow-y-auto space-y-4 pr-2 hide-scrollbar">
+                    <template x-for="(item, index) in cart" :key="index">
+                        <div class="bg-white/10 p-4 rounded-2xl relative border border-white/5">
+                            <button @click="removeFromCart(index)" class="absolute top-2 right-3 text-white/30 hover:text-white">✕</button>
+                            <p class="font-bold text-pink-300" x-text="item.name"></p>
+                            <div class="text-[10px] text-slate-300 flex gap-2 mt-1">
+                                <span class="bg-white/10 px-2 py-0.5 rounded">Sugar: <span x-text="item.sugar"></span></span>
+                                <span class="bg-white/10 px-2 py-0.5 rounded" x-text="item.addon"></span>
+                            </div>
+                            <p class="text-right font-mono font-bold mt-1" x-text="formatCurrency(item.total)"></p>
+                        </div>
+                    </template>
+                </div>
+
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <div class="flex justify-between text-2xl font-black mb-6">
+                        <span>Total</span>
+                        <span class="text-pink-400" x-text="formatCurrency(cartTotal)"></span>
+                    </div>
+                    <button @click="checkout()" :disabled="cart.length === 0"
+                        class="w-full bg-pink-500 hover:bg-pink-400 py-4 rounded-2xl font-black text-lg shadow-xl shadow-pink-900/20 disabled:opacity-50 transition-all active:scale-95">
+                        CHARGE CLIENT
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="activeTab === 'inventory'" x-cloak class="bg-white rounded-3xl shadow-sm border p-6">
+            <h2 class="text-xl font-bold mb-6">Stock Control</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="text-left text-slate-400 text-xs uppercase font-black border-b">
+                        <tr>
+                            <th class="pb-4">Product</th>
+                            <th class="pb-4 text-center">Stock</th>
+                            <th class="pb-4 text-right">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        <template x-for="p in products" :key="p.id">
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="py-4 font-bold" x-text="p.name"></td>
+                                <td class="py-4 text-center font-mono">
+                                    <span :class="p.stock < 20 ? 'text-red-500 font-black' : 'text-slate-700'" x-text="p.stock"></span>
+                                </td>
+                                <td class="py-4 text-right">
+                                    <button @click="p.stock += 50" class="bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded-lg text-xs font-bold transition-colors">Refill +50</button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div x-show="activeTab === 'finance'" x-cloak class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-white p-6 rounded-3xl border shadow-sm">
+                    <p class="text-xs font-black text-slate-400 uppercase">Gross Sales</p>
+                    <p class="text-3xl font-black text-emerald-500" x-text="formatCurrency(totalSales)"></p>
+                </div>
+                <div class="bg-white p-6 rounded-3xl border shadow-sm">
+                    <p class="text-xs font-black text-slate-400 uppercase">Total Expenses</p>
+                    <p class="text-3xl font-black text-rose-500" x-text="formatCurrency(totalExpenses)"></p>
+                </div>
+                <div class="bg-pink-500 p-6 rounded-3xl shadow-lg text-white">
+                    <p class="text-xs font-black opacity-80 uppercase">Pending Sync</p>
+                    <p class="text-3xl font-black" x-text="unsyncedCount"></p>
+                    <button @click="syncToSupabase()" class="mt-2 text-[10px] bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full font-bold uppercase" x-text="isSyncing ? 'Syncing...' : 'Force Backup'"></button>
+                </div>
+            </div>
+            
+            <div class="bg-white p-6 rounded-3xl border">
+                <h3 class="font-black mb-4 flex items-center gap-2 text-slate-700"><span>📝</span> Record New Expense</h3>
+                <div class="flex flex-col md:flex-row gap-3">
+                    <input type="text" x-model="newExpName" placeholder="e.g. Cup Supplies" class="flex-1 bg-slate-50 border-none ring-1 ring-slate-200 rounded-2xl px-5 py-3 focus:ring-2 focus:ring-pink-500">
+                    <input type="number" x-model="newExpAmt" placeholder="Amount" class="md:w-32 bg-slate-50 border-none ring-1 ring-slate-200 rounded-2xl px-5 py-3 focus:ring-2 focus:ring-pink-500">
+                    <button @click="addExpense" class="bg-slate-900 text-white px-8 py-3 rounded-2xl font-bold hover:bg-slate-800 transition-all">Log Expense</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <nav class="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-white border border-slate-200 shadow-2xl rounded-[2rem] p-2 flex justify-between z-40">
+        <button @click="activeTab = 'pos'" :class="activeTab === 'pos' ? 'bg-pink-500 text-white' : 'text-slate-400'" class="flex-1 py-3 rounded-[1.8rem] flex flex-col items-center gap-1 transition-all">
+            <span class="text-xl">🍹</span><span class="text-[10px] font-black uppercase">Menu</span>
+        </button>
+        <button @click="activeTab = 'inventory'" :class="activeTab === 'inventory' ? 'bg-pink-500 text-white' : 'text-slate-400'" class="flex-1 py-3 rounded-[1.8rem] flex flex-col items-center gap-1 transition-all">
+            <span class="text-xl">📦</span><span class="text-[10px] font-black uppercase">Stock</span>
+        </button>
+        <button @click="activeTab = 'finance'" :class="activeTab === 'finance' ? 'bg-pink-500 text-white' : 'text-slate-400'" class="flex-1 py-3 rounded-[1.8rem] flex flex-col items-center gap-1 transition-all">
+            <span class="text-xl">📊</span><span class="text-[10px] font-black uppercase">Data</span>
+        </button>
+    </nav>
+
+    <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showModal = false"></div>
+        <div class="bg-white rounded-[2.5rem] w-full max-w-md relative z-10 overflow-hidden shadow-2xl">
+            <div class="bg-pink-500 p-6 text-white text-center">
+                <p class="text-xs font-black uppercase opacity-80">Customizing Order</p>
+                <h3 class="text-2xl font-black" x-text="selectedProduct?.name"></h3>
+            </div>
+            
+            <div class="p-8 space-y-6">
+                <div>
+                    <p class="text-xs font-black uppercase text-slate-400 mb-3 tracking-widest">Sugar Level</p>
+                    <div class="grid grid-cols-5 gap-2">
+                        <template x-for="lvl in ['0%', '25%', '50%', '75%', '100%']">
+                            <button @click="tempSugar = lvl" 
+                                :class="tempSugar === lvl ? 'bg-pink-500 text-white ring-4 ring-pink-100' : 'bg-slate-100 text-slate-600'"
+                                class="py-3 rounded-xl text-xs font-bold transition-all" x-text="lvl"></button>
+                        </template>
+                    </div>
+                </div>
+
+                <div>
+                    <p class="text-xs font-black uppercase text-slate-400 mb-3 tracking-widest">Add-ons (+$1.00)</p>
+                    <div class="flex flex-wrap gap-2">
+                        <template x-for="addon in ['Pearl', 'Nata', 'Pudding', 'None']">
+                            <button @click="tempAddon = addon" 
+                                :class="tempAddon === addon ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-100 text-slate-600'"
+                                class="px-4 py-2 rounded-xl text-xs font-bold transition-all" x-text="addon"></button>
+                        </template>
+                    </div>
+                </div>
+
+                <button @click="confirmAddToCart()" 
+                    class="w-full bg-pink-500 text-white py-5 rounded-2xl font-black text-lg hover:bg-pink-600 shadow-xl shadow-pink-100 transition-all">
+                    ADD TO BASKET
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase Client Initialization
+        const _supabase = supabase.createClient('https://oipfsuuzmtcfwzutfifo.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pcGZzdXV6bXRjZnd6dXRmaWZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NTcyNzIsImV4cCI6MjA4NTUzMzI3Mn0.J5R3c1zUfiLrww6us4zCaDRMkXPSWl0H_5aLdo0DdWM');
+
+        function posApp() {
+            return {
+                activeTab: 'pos',
+                activeCat: 'Milk Tea',
+                showModal: false,
+                isOnline: navigator.onLine,
+                isSyncing: false,
+                selectedProduct: null,
+                tempSugar: '100%',
+                tempAddon: 'Pearl',
+                categories: ['Milk Tea', 'Frappe', 'Yakult Series', 'Fruit Tea'],
+                
+                products: [
+                    { id: 1, name: 'Okinawa', price: 12.00, stock: 100, category: 'Milk Tea', emoji: '🧋' },
+                    { id: 2, name: 'Winter Melon', price: 12.00, stock: 100, category: 'Milk Tea', emoji: '🧋' },
+                    { id: 3, name: 'Classic Pearl', price: 10.00, stock: 80, category: 'Milk Tea', emoji: '🧋' },
+                    { id: 4, name: 'Taro Blast', price: 15.00, stock: 50, category: 'Frappe', emoji: '🍧' },
+                    { id: 5, name: 'Chocolate Fudge', price: 16.00, stock: 40, category: 'Frappe', emoji: '🍫' },
+                    { id: 6, name: 'Strawberry Yakult', price: 14.00, stock: 60, category: 'Yakult Series', emoji: '🍓' },
+                    { id: 7, name: 'Green Apple Yakult', price: 14.00, stock: 60, category: 'Yakult Series', emoji: '🍏' },
+                    { id: 8, name: 'Mango Passion Fruit', price: 13.00, stock: 45, category: 'Fruit Tea', emoji: '🥭' }
+                ],
+                
+                cart: [],
+                history: [],
+                newExpName: '',
+                newExpAmt: null,
+
+                init() {
+                    const saved = localStorage.getItem('boba_pos_data');
+                    if (saved) {
+                        const data = JSON.parse(saved);
+                        this.products = data.products;
+                        this.history = data.history || [];
+                    }
+
+                    // Network Listeners for Real-time status
+                    window.addEventListener('online', () => { 
+                        this.isOnline = true;
+                        this.syncToSupabase(); 
+                    });
+                    window.addEventListener('offline', () => { 
+                        this.isOnline = false; 
+                    });
+
+                    this.$watch('products', val => this.save());
+                    this.$watch('history', val => this.save());
+
+                    // Start sync on load
+                    this.syncToSupabase();
+                },
+
+                save() {
+                    localStorage.setItem('boba_pos_data', JSON.stringify({
+                        products: this.products,
+                        history: this.history
+                    }));
+                },
+
+                async syncToSupabase() {
+                    if (!this.isOnline || this.isSyncing) return;
+
+                    const unsynced = this.history.filter(h => !h.synced);
+                    if (unsynced.length === 0) return;
+
+                    this.isSyncing = true;
+
+                    const dataToUpload = unsynced.map(h => ({
+                        type: h.type,
+                        amount: h.amount,
+                        note: h.note,
+                        created_at: new Date(h.timestamp).toISOString()
+                    }));
+
+                    try {
+                        const { error } = await _supabase
+                            .from('transactions')
+                            .insert(dataToUpload);
+
+                        if (!error) {
+                            this.history.forEach(h => { if (!h.synced) h.synced = true; });
+                            this.save();
+                        } else {
+                            console.error("Supabase Error:", error.message);
+                        }
+                    } catch (err) {
+                        console.error("Sync Exception:", err);
+                    } finally {
+                        this.isSyncing = false;
+                    }
+                },
+
+                get unsyncedCount() {
+                    return this.history.filter(h => !h.synced).length;
+                },
+
+                checkout() {
+                    this.cart.forEach(item => {
+                        const prod = this.products.find(p => p.id === item.id);
+                        if(prod) prod.stock--;
+                    });
+
+                    this.history.push({
+                        type: 'sale',
+                        amount: this.cartTotal,
+                        note: `Sale: ${this.cart.length} Drink(s)`,
+                        timestamp: Date.now(),
+                        synced: false 
+                    });
+
+                    this.cart = [];
+                    this.syncToSupabase(); // Immediate Sync
+                    alert('Success! 🍹 Order added locally and syncing...');
+                },
+
+                addExpense() {
+                    if(!this.newExpName || !this.newExpAmt) return;
+                    this.history.push({
+                        type: 'expense',
+                        amount: parseFloat(this.newExpAmt),
+                        note: this.newExpName,
+                        timestamp: Date.now(),
+                        synced: false
+                    });
+                    this.newExpName = '';
+                    this.newExpAmt = null;
+                    this.syncToSupabase(); // Immediate Sync
+                },
+
+                // Getters & UI Logic
+                get filteredProducts() { return this.products.filter(p => p.category === this.activeCat); },
+                openCustomizer(product) { if(product.stock <= 0) return alert('Out of Stock!'); this.selectedProduct = product; this.showModal = true; },
+                confirmAddToCart() { 
+                    let price = this.selectedProduct.price;
+                    if(this.tempAddon !== 'None') price += 1.0;
+                    this.cart.push({ id: this.selectedProduct.id, name: this.selectedProduct.name, total: price, sugar: this.tempSugar, addon: this.tempAddon });
+                    this.showModal = false;
+                },
+                removeFromCart(index) { this.cart.splice(index, 1); },
+                get cartTotal() { return this.cart.reduce((sum, item) => sum + item.total, 0); },
+                get totalSales() { return this.history.filter(h => h.type === 'sale').reduce((sum, h) => sum + h.amount, 0); },
+                get totalExpenses() { return this.history.filter(h => h.type === 'expense').reduce((sum, h) => sum + h.amount, 0); },
+                get netProfit() { return this.totalSales - this.totalExpenses; },
+                formatCurrency(val) { return '₱' + parseFloat(val).toFixed(2); }
+            }
+        }
+    </script>
+</body>
+</html>
