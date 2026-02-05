@@ -38,7 +38,7 @@
     <div x-show="!isAuthenticated" class="fixed inset-0 z-[100] bg-zinc-950 flex items-center justify-center p-6">
         <div class="bg-zinc-900 p-8 rounded-[3rem] shadow-2xl w-full max-w-sm text-center border-4 border-[#00FF00]">
             <div class="flex justify-center mb-6">
-                <img src="w bg logo.jpg" alt="TEAKAP Logo" class="h-20 object-contain">
+                <img src="https://placehold.co/200x80/000000/00FF00?text=TEAKAP+LOGO" alt="TEAKAP Logo" class="h-20 object-contain">
             </div>
             
             <p class="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-8">Secure Access</p>
@@ -65,7 +65,7 @@
         <aside class="hidden lg:flex w-64 bg-zinc-900 border-r border-zinc-800 flex-col justify-between p-6 z-20">
             <div>
                 <div class="mb-10">
-                    <img src="w bg logo.jpg" alt="TEAKAP" class="h-12 object-contain">
+                    <img src="https://placehold.co/150x50/000000/00FF00?text=TEAKAP" alt="TEAKAP" class="h-12 object-contain">
                 </div>
 
                 <nav class="space-y-2">
@@ -127,7 +127,7 @@
             
             <header class="lg:hidden bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex justify-between items-center shadow-sm z-30">
                 <div class="flex items-center gap-2">
-                    <img src="w bg logo.jpg" alt="Logo" class="h-6 object-contain">
+                    <img src="https://placehold.co/100x40/000000/00FF00?text=TEAKAP" alt="Logo" class="h-6 object-contain">
                     <span class="text-[9px] font-black px-2 py-1 rounded-lg bg-[#00FF00] text-black uppercase tracking-widest hidden sm:inline-block" x-text="currentUserRole === 'owner' ? 'Global Admin' : currentStoreName"></span>
                 </div>
                 <div class="flex items-center gap-3">
@@ -266,15 +266,24 @@
                                     <div class="bg-zinc-900 p-8 rounded-[2.5rem] border border-zinc-800 shadow-sm"><p class="text-[10px] font-black text-zinc-500 uppercase mb-1">Best Seller</p><h2 class="text-xl font-black text-white truncate" x-text="bestSellerName || '-'"></h2></div>
                                     <div class="bg-zinc-800 p-6 rounded-[2.5rem] shadow-sm text-white col-span-1 md:col-span-2 lg:col-span-1 border border-zinc-700">
                                         <p class="text-[10px] font-black text-[#00FF00] uppercase mb-2">Item Pulse</p>
-                                        <input type="text" x-model="itemPulseSearch" placeholder="Search Item..." class="w-full bg-black/50 text-white border-none rounded-xl px-3 py-2 text-xs font-bold placeholder-zinc-600 mb-2">
+                                        <input type="text" x-model="itemPulseSearch" x-on:keyup.debounce.500ms="renderItemPulseChart()" placeholder="Search Item..." class="w-full bg-black/50 text-white border-none rounded-xl px-3 py-2 text-xs font-bold placeholder-zinc-600 mb-2">
                                         <div class="h-20 w-full relative"><canvas id="itemPulseChart"></canvas></div>
                                     </div>
                                     <button @click="refreshStats()" class="bg-[#00FF00] text-black rounded-[2.5rem] font-black uppercase tracking-widest hover:bg-green-400 transition-all flex items-center justify-center"><span>🔄</span> Sync</button>
                                 </div>
                                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                    <div class="bg-zinc-900 p-6 rounded-[2.5rem] shadow-sm border border-zinc-800 h-80 relative"><canvas id="topItemsChart"></canvas></div>
-                                    <div class="bg-zinc-900 p-6 rounded-[2.5rem] shadow-sm border border-zinc-800 h-80 relative"><canvas id="categoryChart"></canvas></div>
-                                    <div class="bg-zinc-900 p-6 rounded-[2.5rem] shadow-sm border border-zinc-800 h-80 relative"><canvas id="trendChart"></canvas></div>
+                                    <div class="bg-zinc-900 p-6 rounded-[2.5rem] shadow-sm border border-zinc-800 h-80 relative">
+                                        <h3 class="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4 absolute top-6 left-6">Top Selling Items</h3>
+                                        <canvas id="topItemsChart" class="mt-4"></canvas>
+                                    </div>
+                                    <div class="bg-zinc-900 p-6 rounded-[2.5rem] shadow-sm border border-zinc-800 h-80 relative">
+                                        <h3 class="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4 absolute top-6 left-6">Category Distribution</h3>
+                                        <canvas id="categoryChart" class="mt-4"></canvas>
+                                    </div>
+                                    <div class="bg-zinc-900 p-6 rounded-[2.5rem] shadow-sm border border-zinc-800 h-80 relative">
+                                        <h3 class="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4 absolute top-6 left-6">Sales Trend (Time)</h3>
+                                        <canvas id="trendChart" class="mt-4"></canvas>
+                                    </div>
                                 </div>
                                 <div class="bg-zinc-900 p-8 rounded-[2.5rem] shadow-sm border border-zinc-800 flex flex-col h-[700px]">
                                     <div class="flex flex-col gap-4 mb-6 pb-6 border-b border-zinc-800">
@@ -301,8 +310,8 @@
                                 <div class="bg-zinc-900 p-4 md:p-8 rounded-[2.5rem] border border-zinc-800 shadow-sm">
                                     <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-8 pb-4 border-b border-zinc-800">
                                         <div>
-                                            <h2 class="text-xl font-black text-white uppercase tracking-tight">📦 Inventory Control</h2>
-                                            <p class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Stock levels per branch</p>
+                                            <h2 class="text-xl font-black text-white uppercase tracking-tight">📦 Stock Management</h2>
+                                            <p class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Manage inventory levels</p>
                                         </div>
                                         <select x-model="inventoryBranchFilter" class="bg-[#00FF00] border-none rounded-2xl py-3 px-6 text-xs font-black text-black cursor-pointer focus:ring-2 focus:ring-green-400">
                                             <template x-for="s in stores">
@@ -312,7 +321,7 @@
                                     </div>
                                     
                                     <div class="bg-zinc-800/50 p-4 md:p-6 rounded-[2rem] border border-zinc-700 mb-8">
-                                        <p class="text-[10px] font-black text-zinc-500 uppercase mb-4 tracking-widest">Create Cloud Link</p>
+                                        <p class="text-[12px] font-bold text-[#00FF00] uppercase mb-4 flex items-center gap-2"><span>➕</span> Add New Stock Item</p>
                                         
                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                                             <input type="text" x-model="newItemStock.name" placeholder="Item Name (e.g. Fructose)" class="bg-zinc-900 text-white border-none rounded-2xl px-4 py-4 text-sm font-bold ring-1 ring-zinc-700 focus:ring-[#00FF00]">
@@ -375,7 +384,8 @@
                                         <button @click="addInventoryItem()" class="w-full bg-[#00FF00] text-black py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-green-400 transition-all shadow-lg">Link & Save to Cloud</button>
                                     </div>
 
-                                    <div class="overflow-x-auto">
+                                    <div class="overflow-x-auto bg-zinc-800/20 p-4 rounded-[2rem] border border-zinc-700/50">
+                                        <p class="text-[12px] font-bold text-zinc-400 uppercase mb-4 flex items-center gap-2 px-2"><span>📋</span> Current Stock List</p>
                                         <table class="w-full text-left text-zinc-300">
                                             <thead>
                                                 <tr class="text-[10px] font-black text-zinc-500 uppercase tracking-widest border-b border-zinc-800">
@@ -482,29 +492,32 @@
                     </template>
                 </div>
                 <div x-show="modalStep === 2" class="space-y-3">
-                    <p class="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">Sugar Level</p>
-                    <div class="grid grid-cols-1 gap-2">
-                        <template x-for="lvl in ['0%', '25%', '50%', '75%', '100%']">
-                            <button @click="modalSugar = lvl" :class="modalSugar === lvl ? 'bg-[#00FF00] text-black shadow-lg' : 'bg-black hover:bg-zinc-800 text-zinc-300'" class="w-full p-4 rounded-2xl font-bold transition-all text-sm border border-zinc-800" x-text="lvl"></button>
-                        </template>
-                    </div>
-                </div>
-                <div x-show="(modalStep === 2) || (!selectedProduct?.enableSugar && modalStep === 1)" class="space-y-4 pt-4 border-t border-zinc-800">
-                    <div class="flex items-center justify-between bg-black rounded-2xl p-4 border border-zinc-800">
-                        <span class="font-bold text-sm text-zinc-400">Quantity</span>
-                        <div class="flex items-center gap-4 bg-zinc-900 rounded-xl px-2 py-1">
-                            <button @click="if(modalQty > 1) modalQty--" class="w-8 h-8 rounded-lg hover:bg-zinc-800 font-black text-zinc-500">-</button>
-                            <span x-text="modalQty" class="font-black text-xl w-6 text-center text-white"></span>
-                            <button @click="modalQty++" class="w-8 h-8 rounded-lg hover:bg-zinc-800 font-black text-[#00FF00]">+</button>
+                    <div x-show="selectedProduct?.enableSugar">
+                        <p class="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">Sugar Level</p>
+                        <div class="grid grid-cols-1 gap-2">
+                            <template x-for="lvl in ['0%', '25%', '50%', '75%', '100%']">
+                                <button @click="modalSugar = lvl" :class="modalSugar === lvl ? 'bg-[#00FF00] text-black shadow-lg' : 'bg-black hover:bg-zinc-800 text-zinc-300'" class="w-full p-4 rounded-2xl font-bold transition-all text-sm border border-zinc-800" x-text="lvl"></button>
+                            </template>
                         </div>
                     </div>
-                    <div>
-                        <input type="text" list="noteOptions" x-model="modalNote" placeholder="Custom Note (e.g. Less Ice)" class="w-full bg-black border-none rounded-2xl px-5 py-4 text-sm font-bold text-white focus:ring-1 focus:ring-[#00FF00] placeholder-zinc-600">
-                        <datalist id="noteOptions"><template x-for="note in customNotePresets"><option :value="note"></option></template></datalist>
+
+                    <div class="space-y-4 pt-4 border-t border-zinc-800">
+                        <div class="flex items-center justify-between bg-black rounded-2xl p-4 border border-zinc-800">
+                            <span class="font-bold text-sm text-zinc-400">Quantity</span>
+                            <div class="flex items-center gap-4 bg-zinc-900 rounded-xl px-2 py-1">
+                                <button @click="if(modalQty > 1) modalQty--" class="w-8 h-8 rounded-lg hover:bg-zinc-800 font-black text-zinc-500">-</button>
+                                <span x-text="modalQty" class="font-black text-xl w-6 text-center text-white"></span>
+                                <button @click="modalQty++" class="w-8 h-8 rounded-lg hover:bg-zinc-800 font-black text-[#00FF00]">+</button>
+                            </div>
+                        </div>
+                        <div>
+                            <input type="text" list="noteOptions" x-model="modalNote" placeholder="Custom Note (e.g. Less Ice)" class="w-full bg-black border-none rounded-2xl px-5 py-4 text-sm font-bold text-white focus:ring-1 focus:ring-[#00FF00] placeholder-zinc-600">
+                            <datalist id="noteOptions"><template x-for="note in customNotePresets"><option :value="note"></option></template></datalist>
+                        </div>
+                        <button @click="finalizeSelection()" class="w-full bg-[#00FF00] text-black py-4 rounded-2xl font-black text-lg active:scale-95 transition-transform shadow-lg shadow-green-900/20">
+                            ADD TO ORDER • <span x-text="formatCurrency((tempAttr ? tempAttr.price : 0) * modalQty)"></span>
+                        </button>
                     </div>
-                    <button @click="finalizeSelection()" class="w-full bg-[#00FF00] text-black py-4 rounded-2xl font-black text-lg active:scale-95 transition-transform shadow-lg shadow-green-900/20">
-                        ADD TO ORDER • <span x-text="formatCurrency((tempAttr ? tempAttr.price : 0) * modalQty)"></span>
-                    </button>
                 </div>
             </div>
             <button @click="showModal = false" class="w-full mt-6 text-zinc-500 font-bold uppercase text-xs hover:text-white">Cancel</button>
