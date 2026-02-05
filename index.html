@@ -36,7 +36,7 @@
 <body class="bg-black text-white font-sans selection:bg-[#00FF00] selection:text-black" x-data="posApp()" x-init="init()">
 
     <div x-show="!isAuthenticated" class="fixed inset-0 z-[100] bg-zinc-950 flex items-center justify-center p-6">
-        <div class="bg-zinc-900 p-8 rounded-[3rem] shadow-2xl w-full max-sm text-center border-4 border-[#00FF00]">
+        <div class="bg-zinc-900 p-8 rounded-[3rem] shadow-2xl w-full max-w-sm text-center border-4 border-[#00FF00]">
             <div class="flex justify-center mb-6">
                 <img src="https://placehold.co/200x80/000000/00FF00?text=TEAKAP+LOGO" alt="TEAKAP Logo" class="h-20 object-contain">
             </div>
@@ -512,7 +512,7 @@
     </div>
 
     <div x-show="showCheckoutModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-        <div class="bg-zinc-900 rounded-[3rem] w-full max-sm p-8 shadow-2xl animate-in zoom-in duration-300 border border-zinc-800">
+        <div class="bg-zinc-900 rounded-[3rem] w-full max-w-sm p-8 shadow-2xl animate-in zoom-in duration-300 border border-zinc-800">
             <h3 class="text-2xl font-black text-center text-white mb-6">Complete Sale</h3>
             <div class="flex bg-black rounded-2xl p-1 mb-6 border border-zinc-800">
                 <button @click="paymentMethod = 'cash'" :class="paymentMethod === 'cash' ? 'bg-zinc-800 text-[#00FF00] shadow-sm' : 'text-zinc-500'" class="flex-1 py-3 rounded-xl font-black text-xs uppercase transition-all">💵 Cash</button>
@@ -562,7 +562,7 @@
     </div>
 
     <div x-show="showTxModal" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-        <div class="bg-zinc-900 rounded-[2.5rem] w-full max-sm p-8 shadow-2xl animate-in zoom-in-95 duration-300 relative border border-zinc-800">
+        <div class="bg-zinc-900 rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl animate-in zoom-in-95 duration-300 relative border border-zinc-800">
             <button @click="showTxModal = false" class="absolute top-6 right-6 text-zinc-500 hover:text-white text-2xl">✕</button>
             <div class="text-center mb-8">
                 <div class="w-16 h-16 bg-[#00FF00]/20 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl border border-[#00FF00]/50">🧾</div>
@@ -592,7 +592,7 @@
     </div>
 
     <div x-show="showInventoryModal" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-        <div class="bg-zinc-900 rounded-[2.5rem] w-full max-sm p-8 shadow-2xl animate-in zoom-in-95 duration-300 relative border border-zinc-800">
+        <div class="bg-zinc-900 rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl animate-in zoom-in-95 duration-300 relative border border-zinc-800">
             <button @click="showInventoryModal = false" class="absolute top-6 right-6 text-zinc-500 hover:text-white text-2xl">✕</button>
             <div class="text-center mb-6">
                 <div class="w-16 h-16 bg-blue-900/30 border border-blue-700 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">📦</div>
@@ -769,6 +769,16 @@
                     }
                 },
 
+                // PRINTER STABILITY HELPER
+                async safeBTWrite(text, encoder) {
+                    const bytes = encoder.encode(text);
+                    const chunkSize = 16; // Even smaller chunks for high item counts
+                    for (let i = 0; i < bytes.length; i += chunkSize) {
+                        await this.printerCharacteristic.writeValue(bytes.slice(i, i + chunkSize));
+                        await new Promise(r => setTimeout(r, 60)); // Slightly longer delay to handle large orders
+                    }
+                },
+
                 async printReceipt(txData) {
                     if (!this.printerCharacteristic) return;
                     
@@ -780,29 +790,8 @@
                     const doubleHW = new Uint8Array([0x1d, 0x21, 0x11]); 
                     const normal = new Uint8Array([0x1d, 0x21, 0x00]);   
 
-                    let fullReceiptText = "";
-                    fullReceiptText += "--------------------------------\n";
-                    fullReceiptText += this.formatRow("Date: " + new Date().toLocaleDateString(), new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
-                    fullReceiptText += "TxID: " + txData.id.split('-')[0] + "\n";
-                    fullReceiptText += "--------------------------------\n";
-                    
-                    txData.items.forEach(item => {
-                        fullReceiptText += this.formatRow(item.qty + "x " + item.name, this.formatCurrency(item.total).replace('₱',''));
-                        if(item.attrName) fullReceiptText += "   " + item.attrName + "\n";
-                        if(item.sugar) fullReceiptText += "   Sugar: " + item.sugar + "\n";
-                        if(item.customNote) fullReceiptText += "   Note: " + item.customNote + "\n";
-                    });
-
-                    fullReceiptText += "--------------------------------\n";
-                    fullReceiptText += this.formatRow("TOTAL", this.formatCurrency(txData.total).replace('₱',''));
-                    fullReceiptText += this.formatRow("PAYMENT (" + txData.method.toUpperCase() + ")", this.formatCurrency(txData.cash).replace('₱',''));
-                    fullReceiptText += this.formatRow("CHANGE", this.formatCurrency(txData.change).replace('₱',''));
-                    fullReceiptText += "--------------------------------\n";
-                    fullReceiptText += "\n      THANK YOU FOR YOUR      \n";
-                    fullReceiptText += "            BUSINESS!          \n";
-
                     try {
-                        // SEND INITIAL COMMANDS
+                        // 1. HEADER BATCH
                         await this.printerCharacteristic.writeValue(init);
                         await this.printerCharacteristic.writeValue(center);
                         await this.printerCharacteristic.writeValue(doubleHW);
@@ -811,15 +800,31 @@
                         await this.printerCharacteristic.writeValue(encoder.encode(this.currentStoreName + "\n\n"));
                         await this.printerCharacteristic.writeValue(left);
 
-                        // CHUNKING LOGIC FOR MOBILE STABILITY
-                        const encodedText = encoder.encode(fullReceiptText);
-                        const chunkSize = 20; // Small MTU safe size for mobile
-                        for (let i = 0; i < encodedText.length; i += chunkSize) {
-                            const chunk = encodedText.slice(i, i + chunkSize);
-                            await this.printerCharacteristic.writeValue(chunk);
-                            // Tiny 50ms delay between chunks to prevent Bluetooth buffer overflow on mobile
-                            await new Promise(r => setTimeout(r, 50));
+                        // 2. METADATA BATCH
+                        let meta = "--------------------------------\n";
+                        meta += this.formatRow("Date: " + new Date().toLocaleDateString(), new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+                        meta += "TxID: " + txData.id.split('-')[0] + "\n";
+                        meta += "--------------------------------\n";
+                        await this.safeBTWrite(meta, encoder);
+
+                        // 3. ITEMS BATCH (Processed 1 by 1 for absolute stability)
+                        for (const item of txData.items) {
+                            let itemRow = this.formatRow(item.qty + "x " + item.name, this.formatCurrency(item.total).replace('₱',''));
+                            if(item.attrName) itemRow += "   " + item.attrName + "\n";
+                            if(item.sugar) itemRow += "   Sugar: " + item.sugar + "\n";
+                            if(item.customNote) itemRow += "   Note: " + item.customNote + "\n";
+                            await this.safeBTWrite(itemRow, encoder);
                         }
+
+                        // 4. FOOTER BATCH
+                        let footer = "--------------------------------\n";
+                        footer += this.formatRow("TOTAL", this.formatCurrency(txData.total).replace('₱',''));
+                        footer += this.formatRow("PAY (" + txData.method.toUpperCase() + ")", this.formatCurrency(txData.cash).replace('₱',''));
+                        footer += this.formatRow("CHANGE", this.formatCurrency(txData.change).replace('₱',''));
+                        footer += "--------------------------------\n";
+                        footer += "\n      THANK YOU FOR YOUR      \n";
+                        footer += "            BUSINESS!          \n";
+                        await this.safeBTWrite(footer, encoder);
 
                         await this.printerCharacteristic.writeValue(feed);
                     } catch (e) {
@@ -918,7 +923,6 @@
                 async confirmSale() {
                     if (this.cart.length === 0) return;
 
-                    // PRINTER ENFORCEMENT
                     if (this.printerEnabled && !this.printerConnected) {
                         alert("⚠️ Printer Enabled but NOT connected! Please connect printer first or disable printing.");
                         return;
@@ -966,7 +970,6 @@
                             this.history.push(syncedTx);
                             if (this.currentUserRole === 'employee') this.globalTransactions.unshift(syncedTx);
                             
-                            // AUTO PRINT RECEIPT IF ENABLED AND CONNECTED
                             if (this.printerEnabled && this.printerConnected) {
                                 await this.printReceipt({
                                     id: syncedTx.id,
