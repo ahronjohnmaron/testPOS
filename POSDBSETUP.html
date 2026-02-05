@@ -3,363 +3,1120 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TEACAP POS + Real-time Supabase</title>
+    <title>TEACAP Master Suite</title>
+    <link rel="manifest" href="manifest.json">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <style>
         [x-cloak] { display: none !important; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
+        /* Added for the inventory selection lists */
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900" x-data="posApp()" x-init="init()">
+<body class="bg-slate-50 text-slate-900 font-sans" x-data="posApp()" x-init="init()">
 
-    <header class="bg-white border-b px-6 py-4 sticky top-0 z-30 flex justify-between items-center shadow-sm">
-        <div>
-            <h1 class="text-2xl font-black text-pink-500 tracking-tight italic">TEA<span class="text-slate-800">CAP</span></h1>
-            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Real-Time Cloud POS</p>
-        </div>
-        
-        <div class="flex items-center gap-4">
-            <div @click="syncToSupabase()" class="cursor-pointer group flex flex-col items-end">
-                <span :class="!isOnline ? 'text-rose-500' : (isSyncing ? 'text-blue-500' : 'text-emerald-500')" 
-                      class="text-[10px] font-black uppercase flex items-center gap-1 transition-colors">
-                    
-                    <template x-if="isSyncing">
-                        <span class="w-2 h-2 border-2 border-t-transparent border-current rounded-full animate-spin"></span>
-                    </template>
-                    <template x-if="!isSyncing">
-                        <span class="w-2 h-2 rounded-full bg-current animate-pulse"></span>
-                    </template>
-
-                    <span x-text="!isOnline ? 'Working Offline' : (isSyncing ? 'Syncing Now...' : 'Cloud Connected')"></span>
-                </span>
-                <p class="text-[9px] text-slate-400 group-hover:text-pink-500 transition-colors">
-                    Pending Backup: <span x-text="unsyncedCount"></span>
-                </p>
-            </div>
-
-            <div class="bg-pink-50 px-4 py-2 rounded-2xl border border-pink-100 text-right">
-                <p class="text-[10px] uppercase text-pink-400 font-bold">Daily Profit</p>
-                <p class="text-xl font-mono font-bold text-pink-600" x-text="formatCurrency(netProfit)"></p>
-            </div>
-        </div>
-    </header>
-
-    <main class="pb-32 p-4 max-w-6xl mx-auto">
-        
-        <div x-show="activeTab === 'pos'" x-cloak class="flex flex-col lg:flex-row gap-6">
-            <div class="flex-1">
-                <div class="flex gap-2 mb-6 overflow-x-auto hide-scrollbar pb-2">
-                    <template x-for="cat in categories">
-                        <button @click="activeCat = cat" 
-                            :class="activeCat === cat ? 'bg-pink-500 text-white shadow-lg' : 'bg-white text-slate-600 border'"
-                            class="px-6 py-2 rounded-full font-bold text-sm transition-all whitespace-nowrap"
-                            x-text="cat">
-                        </button>
-                    </template>
+    <div x-show="!isAuthenticated" class="fixed inset-0 z-[100] bg-pink-500 flex items-center justify-center p-6">
+        <div class="bg-white p-8 rounded-[3rem] shadow-2xl w-full max-w-sm text-center border-8 border-pink-100">
+            <h1 class="text-3xl font-black text-pink-500 mb-2 italic">TEA<span class="text-slate-800">CAP</span></h1>
+            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-8">Secure Access</p>
+            <div class="space-y-4">
+                <div x-show="loginPin !== '0000'" class="transition-all duration-300">
+                    <select x-model="selectedStoreId" class="w-full bg-slate-100 border-none rounded-2xl py-4 px-4 font-bold text-slate-700 focus:ring-2 focus:ring-pink-500">
+                        <option value="">Select Staff Branch...</option>
+                        <template x-for="store in stores" :key="store.id">
+                            <option :value="store.id" x-text="store.name"></option>
+                        </template>
+                    </select>
                 </div>
-
-                <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <template x-for="product in filteredProducts" :key="product.id">
-                        <button @click="openCustomizer(product)"
-                            class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all text-left relative group">
-                            <span class="absolute top-3 right-3 text-2xl group-hover:scale-125 transition-transform" x-text="product.emoji"></span>
-                            <p class="font-bold text-slate-800 pr-8" x-text="product.name"></p>
-                            <p class="text-pink-500 font-black mt-1" x-text="formatCurrency(product.price)"></p>
-                            <p class="text-[10px] text-slate-400 mt-2 italic">Stock: <span x-text="product.stock"></span></p>
-                        </button>
-                    </template>
-                </div>
+                <input type="password" x-model="loginPin" placeholder="Enter PIN" @keyup.enter="login()" class="w-full text-center text-2xl tracking-[0.5em] font-bold bg-slate-100 border-none rounded-2xl py-4 focus:ring-2 focus:ring-pink-500">
+                <button @click="login()" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg hover:bg-slate-800 transition-all">
+                    <span x-text="loginPin === '0000' ? 'ACCESS MASTER DASHBOARD' : 'STAFF LOGIN'"></span>
+                </button>
             </div>
+            <p class="mt-6 text-[9px] text-slate-400 font-bold uppercase">Master PIN: 0000</p>
+        </div>
+    </div>
 
-            <div class="w-full lg:w-96 bg-slate-900 rounded-[2.5rem] p-6 text-white shadow-2xl sticky top-24 h-[calc(100vh-10rem)] flex flex-col">
-                <h2 class="text-xl font-bold mb-6 flex items-center justify-between">
-                    Basket <span class="text-xs bg-white/20 px-3 py-1 rounded-full" x-text="cart.length + ' items'"></span>
-                </h2>
+    <div x-show="isAuthenticated" class="flex h-screen overflow-hidden">
+        
+        <aside class="hidden lg:flex w-64 bg-white border-r border-slate-200 flex-col justify-between p-6 z-20">
+            <div>
+                <h1 class="text-3xl font-black text-pink-500 italic mb-8">TEA<span class="text-slate-800">CAP</span></h1>
+                <nav class="space-y-2">
+                    <template x-if="currentUserRole === 'employee'">
+                        <div class="space-y-2">
+                            <button @click="activeTab = 'pos'" :class="activeTab === 'pos' ? 'bg-pink-50 text-pink-600' : 'text-slate-500 hover:bg-slate-50'" class="w-full text-left px-4 py-3 rounded-xl font-bold transition-colors flex items-center gap-3">
+                                <span>🍹</span> Order
+                            </button>
+                            <button @click="activeTab = 'history'" :class="activeTab === 'history' ? 'bg-pink-50 text-pink-600' : 'text-slate-500 hover:bg-slate-50'" class="w-full text-left px-4 py-3 rounded-xl font-bold transition-colors flex items-center gap-3">
+                                <span>🧾</span> History
+                            </button>
+                        </div>
+                    </template>
+                    <template x-if="currentUserRole === 'owner'">
+                        <div class="space-y-2">
+                            <button @click="activeTab = 'stats'; refreshStats()" :class="activeTab === 'stats' ? 'bg-pink-50 text-pink-600' : 'text-slate-500 hover:bg-slate-50'" class="w-full text-left px-4 py-3 rounded-xl font-bold transition-colors flex items-center gap-3">
+                                <span>📊</span> Dashboard
+                            </button>
+                            <button @click="activeTab = 'inventory-mgmt'" :class="activeTab === 'inventory-mgmt' ? 'bg-pink-50 text-pink-600' : 'text-slate-500 hover:bg-slate-50'" class="w-full text-left px-4 py-3 rounded-xl font-bold transition-colors flex items-center gap-3">
+                                <span>📦</span> Inventory
+                            </button>
+                            <button @click="activeTab = 'inventory'" :class="activeTab === 'inventory' ? 'bg-pink-50 text-pink-600' : 'text-slate-500 hover:bg-slate-50'" class="w-full text-left px-4 py-3 rounded-xl font-bold transition-colors flex items-center gap-3">
+                                <span>⚙️</span> Admin
+                            </button>
+                        </div>
+                    </template>
+                </nav>
+            </div>
+            <div>
+                <div class="px-4 py-3 bg-slate-50 rounded-xl mb-4">
+                    <p class="text-[10px] uppercase text-slate-400 font-bold">Current Branch</p>
+                    <p class="font-bold text-slate-800 truncate" x-text="currentUserRole === 'owner' ? 'Global Admin' : currentStoreName"></p>
+                </div>
+                <div @click="syncToSupabase()" class="cursor-pointer px-4 py-2 mb-2 flex items-center gap-2 text-xs font-bold" :class="!isOnline ? 'text-rose-500' : 'text-emerald-500'">
+                    <span :class="isSyncing ? 'animate-spin' : ''" class="w-2 h-2 rounded-full bg-current"></span>
+                    <span x-text="isSyncing ? 'Syncing...' : (isOnline ? 'Cloud Active' : 'Offline')"></span>
+                </div>
                 
-                <div class="flex-1 overflow-y-auto space-y-4 pr-2 hide-scrollbar">
-                    <template x-for="(item, index) in cart" :key="index">
-                        <div class="bg-white/10 p-4 rounded-2xl relative border border-white/5">
-                            <button @click="removeFromCart(index)" class="absolute top-2 right-3 text-white/30 hover:text-white">✕</button>
-                            <p class="font-bold text-pink-300" x-text="item.name"></p>
-                            <div class="text-[10px] text-slate-300 flex gap-2 mt-1">
-                                <span class="bg-white/10 px-2 py-0.5 rounded">Sugar: <span x-text="item.sugar"></span></span>
-                                <span class="bg-white/10 px-2 py-0.5 rounded" x-text="item.addon"></span>
+                <div class="bg-slate-50 rounded-xl p-3 mb-2 space-y-2">
+                     <label class="flex items-center justify-between cursor-pointer">
+                        <span class="text-[10px] font-bold text-slate-500 uppercase">Print Receipts</span>
+                        <div class="relative">
+                            <input type="checkbox" x-model="printerEnabled" @change="saveLocal()" class="sr-only peer">
+                            <div class="w-7 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-pink-500"></div>
+                        </div>
+                    </label>
+                    <button x-show="printerEnabled" @click="connectPrinter()" class="w-full text-left font-bold text-xs uppercase flex items-center gap-2" :class="printerConnected ? 'text-emerald-500' : 'text-slate-400 hover:text-pink-500'">
+                        <span>🖨️</span>
+                        <span x-text="printerConnected ? 'Ready' : 'Connect BT'"></span>
+                    </button>
+                </div>
+
+                <button @click="logout()" class="w-full text-left px-4 py-2 text-slate-400 hover:text-rose-500 font-bold text-xs uppercase">Logout</button>
+            </div>
+        </aside>
+
+        <div class="flex-1 flex flex-col h-full overflow-hidden relative">
+            
+            <header class="lg:hidden bg-white border-b px-6 py-4 flex justify-between items-center shadow-sm z-30">
+                <div>
+                    <h1 class="text-xl font-black text-pink-500 italic">TEA<span class="text-slate-800">CAP</span></h1>
+                    <span class="text-[9px] font-black px-2 py-1 rounded-lg bg-pink-50 text-pink-500 uppercase tracking-widest" x-text="currentUserRole === 'owner' ? 'Global Admin' : currentStoreName"></span>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div @click="connectPrinter()" class="cursor-pointer text-slate-400" x-show="printerEnabled">🖨️</div>
+                    <div @click="syncToSupabase()" class="cursor-pointer text-right">
+                        <span :class="!isOnline ? 'text-rose-500' : (isSyncing ? 'text-blue-500' : 'text-emerald-500')" class="text-[10px] font-black uppercase flex items-center gap-1">
+                            <span :class="isSyncing ? 'animate-spin' : ''" class="w-2 h-2 rounded-full bg-current animate-pulse"></span>
+                        </span>
+                    </div>
+                    <button @click="logout()" class="text-slate-400 hover:text-rose-500 font-bold text-xs uppercase">Logout</button>
+                </div>
+            </header>
+
+            <div class="flex-1 overflow-y-auto p-4 lg:p-8 pb-32 lg:pb-8">
+                <div class="max-w-7xl mx-auto">
+                    
+                    <template x-if="currentUserRole === 'employee'">
+                        <div>
+                            <div x-show="activeTab === 'pos'" class="flex flex-col xl:flex-row gap-6 animate-in fade-in duration-500">
+                                <div class="flex-1">
+                                    <div class="flex gap-2 mb-6 overflow-x-auto hide-scrollbar pb-2">
+                                        <template x-for="cat in visibleCategories">
+                                            <button @click="activeCat = cat" :class="activeCat === cat ? 'bg-pink-500 text-white shadow-lg' : 'bg-white text-slate-600 border'"
+                                                class="px-6 py-2 rounded-full font-bold text-sm transition-all whitespace-nowrap" x-text="cat"></button>
+                                        </template>
+                                    </div>
+                                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                        <template x-for="product in filteredProducts" :key="product.id">
+                                            <button @click="openCustomizer(product)" class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md text-left transition-all group relative overflow-hidden">
+                                                <span class="absolute top-3 right-3 text-2xl group-hover:scale-125 transition-transform">🍹</span>
+                                                <p class="font-bold text-slate-800 pr-8 truncate" x-text="product.name"></p>
+                                                <p class="text-pink-500 font-black mt-1" x-text="product.attributes.length > 0 ? formatCurrency(product.attributes[0].price) : formatCurrency(0)"></p>
+                                            </button>
+                                        </template>
+                                        <div x-show="filteredProducts.length === 0" class="col-span-full text-center py-10 text-slate-400 italic">No items in this category.</div>
+                                    </div>
+                                </div>
+
+                                <div class="w-full xl:w-96 bg-slate-900 rounded-[2.5rem] p-6 text-white shadow-2xl h-[calc(100vh-8rem)] flex flex-col sticky top-4">
+                                    <h2 class="text-xl font-bold mb-6">Current Order</h2>
+                                    <div class="flex-1 overflow-y-auto space-y-3 hide-scrollbar">
+                                        <template x-for="(item, index) in cart" :key="index">
+                                            <div @click="editCartItem(index)" class="bg-white/10 p-4 rounded-2xl relative cursor-pointer hover:bg-white/20 border border-transparent hover:border-pink-500/50 transition-all group">
+                                                <button @click.stop="removeFromCart(index)" class="absolute top-2 right-3 text-white/30 hover:text-rose-500 group-hover:text-white">✕</button>
+                                                <div class="flex justify-between items-start pr-6">
+                                                    <div>
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="bg-pink-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded" x-text="item.qty + 'x'"></span>
+                                                            <p class="font-bold text-pink-300" x-text="item.name"></p>
+                                                        </div>
+                                                        <p class="text-[10px] text-slate-400 uppercase mt-1">
+                                                            <span x-text="item.attrName"></span>
+                                                            <span x-show="item.sugar" x-text="' | ' + item.sugar"></span>
+                                                            <span x-show="item.customNote" x-text="' | ' + item.customNote" class="text-yellow-400"></span>
+                                                        </p>
+                                                    </div>
+                                                    <p class="font-mono font-black text-sm" x-text="formatCurrency(item.total)"></p>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <div x-show="cart.length === 0" class="text-center py-10 text-white/20 font-bold text-sm">Basket is empty</div>
+                                    </div>
+                                    <div class="mt-6 pt-6 border-t border-white/10">
+                                        <div class="flex justify-between text-2xl font-black mb-6"><span>Total</span><span class="text-pink-400" x-text="formatCurrency(cartTotal)"></span></div>
+                                        <button @click="openCheckoutModal()" :disabled="cart.length === 0" class="w-full bg-pink-500 py-4 rounded-2xl font-black text-lg active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed">COMPLETE SALE</button>
+                                    </div>
+                                </div>
                             </div>
-                            <p class="text-right font-mono font-bold mt-1" x-text="formatCurrency(item.total)"></p>
+
+                            <div x-show="activeTab === 'history'" class="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto">
+                                <div class="bg-white p-8 rounded-[2.5rem] shadow-sm border flex flex-col h-[80vh]">
+                                    <div class="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6 pb-6 border-b border-slate-100">
+                                        <h2 class="text-xl font-black text-slate-800">Transaction History</h2>
+                                        <div class="flex gap-2 w-full sm:w-auto">
+                                            <input type="text" x-model="searchTxQuery" placeholder="Search..." class="bg-slate-50 border-none rounded-xl px-4 py-2 text-xs font-bold w-full">
+                                            <select x-model="empTimeFilter" class="bg-slate-50 border-none rounded-xl px-4 py-2 text-xs font-bold cursor-pointer">
+                                                <option value="24hours">24 Hrs</option>
+                                                <option value="7days">7 Days</option>
+                                                <option value="30days">30 Days</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1 overflow-y-auto space-y-3 hide-scrollbar">
+                                        <template x-for="h in filteredEmployeeTransactions">
+                                            <div @click="viewTransactionDetails(h)" class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center hover:bg-pink-50 hover:border-pink-200 hover:shadow-md cursor-pointer transition-all">
+                                                <div>
+                                                    <div class="flex items-center gap-2 mb-1">
+                                                        <span class="text-[9px] text-slate-400 font-bold" x-text="new Date(h.created_at).toLocaleString()"></span>
+                                                        <span class="text-[9px] text-slate-300 font-mono" x-text="'#' + h.id.split('-')[0]"></span>
+                                                        <span x-show="h.payment_method === 'gcash'" class="text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-bold">GCASH</span>
+                                                    </div>
+                                                    <p class="font-bold text-sm text-slate-800 line-clamp-1" x-text="h.note"></p>
+                                                </div>
+                                                <p class="font-mono font-black text-slate-900" x-text="formatCurrency(h.amount)"></p>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template x-if="currentUserRole === 'owner'">
+                        <div class="space-y-8 animate-in slide-in-from-bottom duration-500">
+                            
+                            <div x-show="activeTab === 'stats'" class="space-y-6">
+                                <div class="bg-white p-6 rounded-[2.5rem] border shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+                                    <h2 class="text-lg font-black uppercase text-slate-700">Analytics Dashboard</h2>
+                                    <div class="flex gap-2">
+                                        <select x-model="dateFilter" @change="refreshStats()" class="bg-slate-100 border-none rounded-2xl py-3 px-6 text-xs font-bold cursor-pointer"><option value="all">All Time</option><option value="today">Today</option><option value="7days">Last 7 Days</option><option value="30days">Last 30 Days</option></select>
+                                        <select x-model="ownerStatFilter" @change="refreshStats()" class="bg-pink-50 border-none rounded-2xl py-3 px-6 text-xs font-black text-pink-500 cursor-pointer"><option value="all">🌏 Global</option><template x-for="s in stores"><option :value="s.id" x-text="s.name"></option></template></select>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <div class="bg-white p-8 rounded-[2.5rem] border shadow-sm"><p class="text-[10px] font-black text-slate-400 uppercase mb-1">Total Sales</p><h2 class="text-3xl font-black text-emerald-500" x-text="formatCurrency(filteredSalesTotal)"></h2></div>
+                                    <div class="bg-white p-8 rounded-[2.5rem] border shadow-sm"><p class="text-[10px] font-black text-slate-400 uppercase mb-1">Best Seller</p><h2 class="text-xl font-black text-pink-500 truncate" x-text="bestSellerName || '-'"></h2></div>
+                                    <div class="bg-pink-500 p-6 rounded-[2.5rem] shadow-sm text-white col-span-1 md:col-span-2 lg:col-span-1">
+                                        <p class="text-[10px] font-black text-pink-200 uppercase mb-2">Item Pulse</p>
+                                        <input type="text" x-model="itemPulseSearch" placeholder="Search Item..." class="w-full bg-white/20 text-white border-none rounded-xl px-3 py-2 text-xs font-bold placeholder-white/50 mb-2">
+                                        <div class="h-20 w-full relative"><canvas id="itemPulseChart"></canvas></div>
+                                    </div>
+                                    <button @click="refreshStats()" class="bg-slate-900 text-white rounded-[2.5rem] font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center"><span>🔄</span> Sync</button>
+                                </div>
+                                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    <div class="bg-white p-6 rounded-[2.5rem] shadow-sm border h-80 relative"><canvas id="topItemsChart"></canvas></div>
+                                    <div class="bg-white p-6 rounded-[2.5rem] shadow-sm border h-80 relative"><canvas id="categoryChart"></canvas></div>
+                                    <div class="bg-white p-6 rounded-[2.5rem] shadow-sm border h-80 relative"><canvas id="trendChart"></canvas></div>
+                                </div>
+                                <div class="bg-white p-8 rounded-[2.5rem] shadow-sm border flex flex-col h-[700px]">
+                                    <div class="flex flex-col gap-4 mb-6 pb-6 border-b border-slate-100">
+                                        <div class="flex justify-between items-center"><h2 class="text-xs font-black text-slate-400 uppercase tracking-widest">Transaction Search Engine</h2><button @click="sortOrder = sortOrder === 'desc' ? 'asc' : 'desc'" class="bg-slate-100 px-4 py-2 rounded-xl text-[10px] font-bold text-slate-600 hover:bg-slate-200 transition-all flex items-center gap-2"><span x-text="sortOrder === 'desc' ? 'Newest First' : 'Oldest First'"></span><span>⇅</span></button></div>
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            <input type="date" x-model="searchTxDate" class="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs font-bold text-slate-600 focus:ring-2 focus:ring-pink-500">
+                                            <div class="relative"><input type="text" x-model="searchTxQuery" placeholder="Search Item Name..." class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 pl-10 text-xs font-bold text-slate-600 focus:ring-2 focus:ring-pink-500"><span class="absolute left-3 top-3 text-slate-400">🔍</span></div>
+                                            <select x-model="searchTxBranch" class="bg-slate-50 border-none rounded-xl px-4 py-3 text-xs font-bold text-slate-600 focus:ring-2 focus:ring-pink-500"><option value="">All Branches</option><template x-for="s in stores"><option :value="s.id" x-text="s.name"></option></template></select>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1 overflow-y-auto space-y-3 hide-scrollbar">
+                                        <template x-for="h in searchedTransactions">
+                                            <div @click="viewTransactionDetails(h)" class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center hover:bg-pink-50 hover:border-pink-200 hover:shadow-md cursor-pointer transition-all">
+                                                <div><div class="flex items-center gap-2 mb-1"><span class="text-[9px] bg-pink-100 text-pink-600 px-2 py-0.5 rounded font-black uppercase" x-text="getStoreName(h.store_id)"></span><span class="text-[9px] text-slate-300 font-mono" x-text="'#' + h.id.split('-')[0]"></span><span x-show="h.payment_method === 'gcash'" class="text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-bold">GCASH</span><span class="text-[9px] text-slate-400 font-bold" x-text="new Date(h.created_at).toLocaleString()"></span></div><p class="font-bold text-sm text-slate-800 line-clamp-1" x-text="h.note"></p></div>
+                                                <p class="font-mono font-black text-slate-900" x-text="formatCurrency(h.amount)"></p>
+                                            </div>
+                                        </template>
+                                        <div x-show="searchedTransactions.length === 0" class="text-center py-20 text-slate-300 font-bold">No transactions found matching filters.</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div x-show="activeTab === 'inventory-mgmt'" class="space-y-6">
+                                <div class="bg-white p-4 md:p-8 rounded-[2.5rem] border shadow-sm">
+                                    <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-8 pb-4 border-b">
+                                        <div>
+                                            <h2 class="text-xl font-black text-slate-800 uppercase tracking-tight">📦 Inventory Control</h2>
+                                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Stock levels per branch</p>
+                                        </div>
+                                        <select x-model="inventoryBranchFilter" class="bg-pink-50 border-none rounded-2xl py-3 px-6 text-xs font-black text-pink-500 cursor-pointer focus:ring-2 focus:ring-pink-500">
+                                            <template x-for="s in stores">
+                                                <option :value="s.id" x-text="'📍 ' + s.name"></option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="bg-slate-50 p-4 md:p-6 rounded-[2rem] border border-slate-100 mb-8">
+                                        <p class="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest">Create Cloud Link</p>
+                                        
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                            <input type="text" x-model="newItemStock.name" placeholder="Item Name (e.g. Fructose)" class="bg-white border-none rounded-2xl px-4 py-4 text-sm font-bold ring-1 ring-slate-200">
+                                            <input type="number" x-model="newItemStock.qty" placeholder="Initial Qty" class="bg-white border-none rounded-2xl px-4 py-4 text-sm font-bold ring-1 ring-slate-200">
+                                        </div>
+
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                            <div class="bg-white p-4 rounded-3xl ring-1 ring-slate-100">
+                                                <label class="text-[10px] font-black text-pink-500 uppercase mb-2 block">Link Specific Items</label>
+                                                <input type="text" x-model="newItemStock.itemSearch" placeholder="Search drinks..." class="w-full bg-slate-50 border-none rounded-xl px-3 py-2 text-xs mb-3">
+                                                <div class="h-48 overflow-y-auto space-y-1 pr-2 custom-scrollbar">
+                                                    <template x-for="p in filteredLinkableItems" :key="p.id">
+                                                        <label class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors" :class="newItemStock.relatedMenuIds.includes(p.id) ? 'bg-pink-50' : ''">
+                                                            <span class="text-xs font-bold text-slate-700" x-text="p.name"></span>
+                                                            <input type="checkbox" :value="p.id" x-model="newItemStock.relatedMenuIds" class="w-4 h-4 accent-pink-500 rounded">
+                                                        </label>
+                                                    </template>
+                                                </div>
+                                            </div>
+
+                                            <div class="bg-white p-4 rounded-3xl ring-1 ring-slate-100">
+                                                <label class="text-[10px] font-black text-pink-500 uppercase mb-2 block">Link Entire Categories</label>
+                                                <input type="text" x-model="newItemStock.catSearch" placeholder="Search categories..." class="w-full bg-slate-50 border-none rounded-xl px-3 py-2 text-xs mb-3">
+                                                <div class="h-48 overflow-y-auto space-y-1 pr-2 custom-scrollbar">
+                                                    <template x-for="cat in filteredLinkableCategories" :key="cat">
+                                                        <label class="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors" :class="newItemStock.relatedCategories.includes(cat) ? 'bg-pink-50' : ''">
+                                                            <span class="text-xs font-bold text-slate-700" x-text="cat"></span>
+                                                            <input type="checkbox" :value="cat" x-model="newItemStock.relatedCategories" class="w-4 h-4 accent-pink-500 rounded">
+                                                        </label>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="bg-white p-5 rounded-3xl ring-1 ring-slate-100 mb-6">
+                                            <div class="flex items-center justify-between mb-4 flex-wrap gap-4">
+                                                <label class="flex items-center gap-3 cursor-pointer">
+                                                    <input type="checkbox" x-model="newItemStock.isSugar" class="w-5 h-5 accent-pink-500 rounded-lg">
+                                                    <span class="text-xs font-black text-slate-700 uppercase">Sugar Ingredient</span>
+                                                </label>
+                                                <div x-show="!newItemStock.isSugar" class="flex items-center gap-2">
+                                                    <span class="text-[10px] font-bold text-slate-400">BASE RATIO:</span>
+                                                    <input type="number" x-model="newItemStock.ratio" class="w-20 bg-slate-50 border-none rounded-lg px-2 py-1 text-sm font-bold text-center">
+                                                </div>
+                                            </div>
+
+                                            <div x-show="newItemStock.isSugar" class="animate-in slide-in-from-top-2">
+                                                <p class="text-[9px] font-black text-pink-400 uppercase mb-3 text-center">Designated Multiplier per Sugar Level</p>
+                                                <div class="grid grid-cols-5 gap-2">
+                                                    <template x-for="lvl in ['0', '25', '50', '75', '100']">
+                                                        <div class="text-center">
+                                                            <label class="text-[9px] font-bold text-slate-400 block mb-1" x-text="lvl+'%'"></label>
+                                                            <input type="number" x-model="newItemStock.sugarRatios[lvl]" class="w-full bg-slate-50 border-none rounded-xl py-2 text-xs font-bold text-center">
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <button @click="addInventoryItem()" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg">Link & Save to Cloud</button>
+                                    </div>
+
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-left">
+                                            <thead>
+                                                <tr class="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">
+                                                    <th class="pb-4 px-2">Stock Name</th>
+                                                    <th class="pb-4 px-2">Qty</th>
+                                                    <th class="pb-4 px-2 text-right">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="text-xs">
+                                                <template x-for="inv in filteredInventory" :key="inv.id">
+                                                    <tr @click="viewInventoryDetails(inv)" class="border-b last:border-0 border-slate-50 hover:bg-slate-50/50 cursor-pointer">
+                                                        <td class="py-4 px-2 font-black text-slate-700" x-text="inv.name"></td>
+                                                        <td class="py-4 px-2">
+                                                            <span :class="inv.qty < 5 ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'" class="px-2 py-1 rounded font-black" x-text="inv.qty.toFixed(2)"></span>
+                                                        </td>
+                                                        <td class="py-4 px-2 text-right">
+                                                            <button @click.stop="deleteInventoryItem(inv.id)" class="text-rose-500 font-bold">✕</button>
+                                                        </td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                        <div x-show="filteredInventory.length === 0" class="text-center py-12 text-slate-300 font-bold uppercase tracking-widest text-[10px]">No Stock linked to this branch</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div x-show="activeTab === 'inventory'" class="space-y-8">
+                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    <div class="bg-white p-6 rounded-3xl border shadow-sm">
+                                        <h2 class="text-lg font-black mb-4">📱 Payment QR Manager</h2>
+                                        <div class="flex items-center gap-4">
+                                            <div class="w-24 h-24 bg-slate-100 rounded-2xl flex items-center justify-center overflow-hidden border">
+                                                <img 
+                                                    :src="qrImageUrl ? qrImageUrl : ''" 
+                                                    onerror="this.onerror=null; this.src='https://placehold.co/150x150?text=No+QR';" 
+                                                    class="w-full h-full object-cover"
+                                                    x-show="qrImageUrl"
+                                                >
+                                                <span x-show="!qrImageUrl" class="text-[9px] font-bold text-slate-400 text-center px-2">No QR Uploaded</span>
+                                            </div>
+                                            <div class="flex-1"><p class="text-xs font-bold text-slate-500 mb-2">Upload new GCash QR Code</p><input type="file" @change="uploadQR($event)" accept="image/*" class="text-xs w-full file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-pink-50 file:text-pink-700 hover:file:bg-pink-100"></div>
+                                        </div>
+                                    </div>
+                                    <div class="bg-white p-6 rounded-3xl border shadow-sm">
+                                        <h2 class="text-lg font-black mb-4">🏪 Branch Manager</h2>
+                                        <div class="flex gap-2 mb-4"><input type="text" x-model="newStore.name" placeholder="Store Name" class="flex-1 bg-slate-50 rounded-2xl px-4 py-3 border-none text-xs font-bold"><input type="text" x-model="newStore.staff_pin" placeholder="PIN" class="w-24 bg-slate-50 rounded-2xl px-4 py-3 border-none text-xs font-bold text-center"><button @click="addStore()" class="bg-slate-900 text-white px-4 rounded-2xl font-bold text-xs">Add</button></div>
+                                        <div class="mt-6 pt-6 border-t border-slate-100"><p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Existing Branches</p><div class="space-y-2"><template x-for="store in stores" :key="store.id"><div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100 group"><div><p class="text-xs font-bold text-slate-700" x-text="store.name"></p><p class="text-[9px] text-slate-400 font-mono" x-text="'PIN: ' + store.staff_pin"></p></div><button @click="deleteStore(store.id)" class="text-slate-300 hover:text-rose-500 transition-colors p-2">✕</button></div></template></div></div>
+                                    </div>
+                                </div>
+                                <div class="bg-white p-6 rounded-3xl border shadow-sm">
+                                    <h2 class="text-lg font-black mb-4">⚙️ Branch Menu Visibility</h2>
+                                    <div class="mb-4"><select x-model="configStoreId" @change="loadStoreConfig()" class="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-pink-500"><option value="">Select Branch to Configure...</option><template x-for="s in stores"><option :value="s.id" x-text="s.name"></option></template></select></div>
+                                    <div x-show="configStoreId" class="animate-in fade-in slide-in-from-top-2"><p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Allowed Categories</p><div class="flex flex-wrap gap-2"><template x-for="cat in categories"><label class="flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-xl cursor-pointer hover:bg-slate-200 transition-colors"><input type="checkbox" :value="cat" x-model="configAllowedCats" class="w-4 h-4 rounded text-pink-500 focus:ring-pink-500 border-gray-300"><span class="text-xs font-bold text-slate-700" x-text="cat"></span></label></template></div><button @click="saveStoreConfig()" class="mt-4 bg-pink-500 text-white px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-pink-600 transition-colors w-full sm:w-auto">Save Changes</button></div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    <div class="bg-white p-6 rounded-3xl border shadow-sm"><h2 class="text-lg font-black mb-4">📁 Categories</h2><div class="flex gap-2 mb-4"><input type="text" x-model="newCatName" placeholder="New Category" class="flex-1 bg-slate-50 rounded-2xl px-4 py-3 border-none text-xs font-bold"><button @click="addCategory()" class="bg-pink-500 text-white px-4 rounded-2xl font-bold text-xs">Add</button></div><div class="flex flex-wrap gap-2"><template x-for="cat in categories"><div class="bg-slate-100 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 group"><span x-text="cat"></span><div class="flex gap-1 opacity-50 group-hover:opacity-100"><button @click="editCategory(cat)" class="text-blue-500">✎</button><button x-show="cat !== 'Add-ons'" @click="deleteCategory(cat)" class="text-rose-500">✕</button></div></div></template></div></div>
+                                    <div class="bg-white p-6 rounded-3xl border shadow-sm"><h2 class="text-lg font-black mb-4">📝 Custom Notes</h2><div class="flex gap-2 mb-4"><input type="text" x-model="newNoteOption" placeholder="New Note" class="flex-1 bg-slate-50 rounded-2xl px-4 py-3 border-none text-xs font-bold"><button @click="addNotePreset()" class="bg-pink-500 text-white px-4 rounded-2xl font-bold text-xs">Add</button></div><div class="flex flex-wrap gap-2"><template x-for="note in customNotePresets"><span class="bg-slate-100 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2"><span x-text="note"></span><button @click="deleteNotePreset(note)" class="text-rose-500 hover:text-rose-700">✕</button></span></template></div></div>
+                                </div>
+                                <div class="bg-white p-6 rounded-3xl border shadow-sm">
+                                    <div class="flex justify-between items-center mb-4"><h2 class="text-lg font-black">🍹 Menu Editor <span x-show="isEditingProduct" class="text-xs text-blue-500 bg-blue-50 px-2 py-1 rounded ml-2">EDITING MODE</span></h2><button x-show="isEditingProduct" @click="cancelEditProduct()" class="text-xs font-bold text-slate-400">Cancel Edit</button></div>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><input type="text" x-model="newProd.name" placeholder="Item Name" class="bg-slate-50 rounded-2xl px-5 py-3 border-none"><select x-model="newProd.category" class="bg-slate-50 rounded-2xl px-5 py-3 border-none"><template x-for="cat in categories"><option :value="cat" x-text="cat"></option></template></select></div>
+                                    <div class="bg-slate-50 p-4 rounded-2xl mb-4"><div class="flex justify-between items-center mb-2"><label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" x-model="newProd.enableSugar" class="accent-pink-500"><span class="text-xs font-bold text-slate-500">Enable Sugar</span></label><button @click="addAttributeField()" class="text-[10px] text-pink-500 font-bold">+ Add Size</button></div><template x-for="(attr, index) in tempAttributes" :key="index"><div class="flex gap-2 mb-2"><input type="text" x-model="attr.name" placeholder="Size" class="flex-1 bg-white rounded-lg px-3 py-2 text-xs"><input type="number" x-model="attr.price" placeholder="Price" class="w-20 bg-white rounded-lg px-3 py-2 text-xs"><button @click="tempAttributes.splice(index, 1)" class="text-rose-500">✕</button></div></template></div>
+                                    <button @click="isEditingProduct ? updateProduct() : addProduct()" :class="isEditingProduct ? 'bg-blue-500' : 'bg-pink-500'" class="w-full text-white py-4 rounded-2xl font-bold uppercase tracking-widest transition-colors"><span x-text="isEditingProduct ? 'Update Product' : 'Save to Menu'"></span></button>
+                                    <div class="mt-8 pt-8 border-t border-slate-100">
+                                        <div class="flex gap-4 mb-4"><select x-model="selectedStoreId" @change="fetchStoreMenu()" class="bg-white border rounded-xl py-2 px-4 text-xs font-bold"><option value="">Select Branch to Edit...</option><template x-for="s in stores"><option :value="s.id" x-text="s.name"></option></template></select></div>
+                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4"><template x-for="p in products"><div class="bg-slate-50 p-4 rounded-2xl relative group border hover:border-blue-200 transition-all"><p class="font-bold text-sm truncate" x-text="p.name"></p><p class="text-xs text-slate-400" x-text="p.category"></p><div class="mt-2 flex gap-2"><button @click="loadProductForEdit(p)" class="flex-1 bg-blue-100 text-blue-600 rounded py-1 text-[10px] font-bold">Edit</button><button @click="deleteProduct(p.id)" class="flex-1 bg-rose-100 text-rose-600 rounded py-1 text-[10px] font-bold">Del</button></div></div></template></div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </template>
                 </div>
+            </div>
+        </div>
 
-                <div class="mt-6 pt-6 border-t border-white/10">
-                    <div class="flex justify-between text-2xl font-black mb-6">
-                        <span>Total</span>
-                        <span class="text-pink-400" x-text="formatCurrency(cartTotal)"></span>
+        <nav class="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-[2.5rem] p-2 flex justify-between z-40">
+            <template x-if="currentUserRole === 'employee'">
+                <div class="flex w-full">
+                    <button @click="activeTab = 'pos'" :class="activeTab === 'pos' ? 'bg-pink-500 text-white shadow-lg' : 'text-slate-400'" class="flex-1 py-3 rounded-[2rem] flex flex-col items-center gap-1 transition-all"><span>🍹</span></button>
+                    <button @click="activeTab = 'history'" :class="activeTab === 'history' ? 'bg-pink-50 text-white shadow-lg' : 'text-slate-400'" class="flex-1 py-3 rounded-[2rem] flex flex-col items-center gap-1 transition-all"><span>🧾</span></button>
+                </div>
+            </template>
+            <template x-if="currentUserRole === 'owner'">
+                <div class="flex w-full">
+                    <button @click="activeTab = 'stats'; refreshStats()" :class="activeTab === 'stats' ? 'bg-pink-50 text-white shadow-lg' : 'text-slate-400'" class="flex-1 py-3 rounded-[2rem] flex flex-col items-center gap-1 transition-all"><span>📊</span></button>
+                    <button @click="activeTab = 'inventory-mgmt'" :class="activeTab === 'inventory-mgmt' ? 'bg-pink-50 text-white shadow-lg' : 'text-slate-400'" class="flex-1 py-3 rounded-[2rem] flex flex-col items-center gap-1 transition-all"><span>📦</span></button>
+                    <button @click="activeTab = 'inventory'" :class="activeTab === 'inventory' ? 'bg-pink-50 text-white shadow-lg' : 'text-slate-400'" class="flex-1 py-3 rounded-[2rem] flex flex-col items-center gap-1 transition-all"><span>⚙️</span></button>
+                </div>
+            </template>
+        </nav>
+    </div>
+
+    <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div class="bg-white rounded-[3rem] w-full max-w-md p-8 shadow-2xl animate-in zoom-in duration-300">
+            <h3 class="text-2xl font-black text-center text-slate-800 mb-6" x-text="selectedProduct?.name"></h3>
+            <div class="max-h-[60vh] overflow-y-auto hide-scrollbar space-y-6">
+                <div x-show="modalStep === 1" class="space-y-3">
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Select Size</p>
+                    <template x-for="attr in selectedProduct?.attributes">
+                        <button @click="handleAttributeSelection(attr)" class="w-full bg-slate-50 hover:bg-pink-50 p-5 rounded-2xl flex justify-between items-center font-bold border border-slate-100 hover:border-pink-200 transition-all">
+                            <span x-text="attr.name" class="text-slate-700"></span><span x-text="formatCurrency(attr.price)" class="text-pink-500 font-black"></span>
+                        </button>
+                    </template>
+                </div>
+                <div x-show="modalStep === 2" class="space-y-3">
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Sugar Level</p>
+                    <div class="grid grid-cols-1 gap-2">
+                        <template x-for="lvl in ['0%', '25%', '50%', '75%', '100%']">
+                            <button @click="modalSugar = lvl" :class="modalSugar === lvl ? 'bg-pink-500 text-white shadow-lg' : 'bg-slate-50 hover:bg-slate-100 text-slate-700'" class="w-full p-4 rounded-2xl font-bold transition-all text-sm" x-text="lvl"></button>
+                        </template>
                     </div>
-                    <button @click="checkout()" :disabled="cart.length === 0"
-                        class="w-full bg-pink-500 hover:bg-pink-400 py-4 rounded-2xl font-black text-lg shadow-xl shadow-pink-900/20 disabled:opacity-50 transition-all active:scale-95">
-                        CHARGE CLIENT
+                </div>
+                <div x-show="(modalStep === 2) || (!selectedProduct?.enableSugar && modalStep === 1)" class="space-y-4 pt-4 border-t border-slate-100">
+                    <div class="flex items-center justify-between bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                        <span class="font-bold text-sm text-slate-600">Quantity</span>
+                        <div class="flex items-center gap-4 bg-white rounded-xl shadow-sm px-2 py-1">
+                            <button @click="if(modalQty > 1) modalQty--" class="w-8 h-8 rounded-lg hover:bg-slate-100 font-black text-slate-400">-</button>
+                            <span x-text="modalQty" class="font-black text-xl w-6 text-center"></span>
+                            <button @click="modalQty++" class="w-8 h-8 rounded-lg hover:bg-slate-100 font-black text-pink-500">+</button>
+                        </div>
+                    </div>
+                    <div>
+                        <input type="text" list="noteOptions" x-model="modalNote" placeholder="Custom Note (e.g. Less Ice)" class="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-pink-500">
+                        <datalist id="noteOptions"><template x-for="note in customNotePresets"><option :value="note"></option></template></datalist>
+                    </div>
+                    <button @click="finalizeSelection()" class="w-full bg-pink-500 text-white py-4 rounded-2xl font-black text-lg active:scale-95 transition-transform shadow-lg shadow-pink-200">
+                        ADD TO ORDER • <span x-text="formatCurrency((tempAttr ? tempAttr.price : 0) * modalQty)"></span>
                     </button>
                 </div>
             </div>
+            <button @click="showModal = false" class="w-full mt-6 text-slate-400 font-bold uppercase text-xs">Cancel</button>
         </div>
+    </div>
 
-        <div x-show="activeTab === 'inventory'" x-cloak class="bg-white rounded-3xl shadow-sm border p-6">
-            <h2 class="text-xl font-bold mb-6">Stock Control</h2>
-            <div class="overflow-x-auto">
-                <table class="w-full">
-                    <thead class="text-left text-slate-400 text-xs uppercase font-black border-b">
-                        <tr>
-                            <th class="pb-4">Product</th>
-                            <th class="pb-4 text-center">Stock</th>
-                            <th class="pb-4 text-right">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y">
-                        <template x-for="p in products" :key="p.id">
-                            <tr class="hover:bg-slate-50 transition-colors">
-                                <td class="py-4 font-bold" x-text="p.name"></td>
-                                <td class="py-4 text-center font-mono">
-                                    <span :class="p.stock < 20 ? 'text-red-500 font-black' : 'text-slate-700'" x-text="p.stock"></span>
-                                </td>
-                                <td class="py-4 text-right">
-                                    <button @click="p.stock += 50" class="bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded-lg text-xs font-bold transition-colors">Refill +50</button>
-                                </td>
-                            </tr>
-                        </template>
-                    </tbody>
-                </table>
+    <div x-show="showCheckoutModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div class="bg-white rounded-[3rem] w-full max-w-sm p-8 shadow-2xl animate-in zoom-in duration-300">
+            <h3 class="text-2xl font-black text-center text-slate-800 mb-6">Complete Sale</h3>
+            <div class="flex bg-slate-100 rounded-2xl p-1 mb-6">
+                <button @click="paymentMethod = 'cash'" :class="paymentMethod === 'cash' ? 'bg-white shadow-sm text-pink-500' : 'text-slate-400'" class="flex-1 py-3 rounded-xl font-black text-xs uppercase transition-all">💵 Cash</button>
+                <button @click="paymentMethod = 'gcash'" :class="paymentMethod === 'gcash' ? 'bg-white shadow-sm text-blue-500' : 'text-slate-400'" class="flex-1 py-3 rounded-xl font-black text-xs uppercase transition-all">📱 G-Cash</button>
             </div>
-        </div>
-
-        <div x-show="activeTab === 'finance'" x-cloak class="space-y-6">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="bg-white p-6 rounded-3xl border shadow-sm">
-                    <p class="text-xs font-black text-slate-400 uppercase">Gross Sales</p>
-                    <p class="text-3xl font-black text-emerald-500" x-text="formatCurrency(totalSales)"></p>
-                </div>
-                <div class="bg-white p-6 rounded-3xl border shadow-sm">
-                    <p class="text-xs font-black text-slate-400 uppercase">Total Expenses</p>
-                    <p class="text-3xl font-black text-rose-500" x-text="formatCurrency(totalExpenses)"></p>
-                </div>
-                <div class="bg-pink-500 p-6 rounded-3xl shadow-lg text-white">
-                    <p class="text-xs font-black opacity-80 uppercase">Pending Sync</p>
-                    <p class="text-3xl font-black" x-text="unsyncedCount"></p>
-                    <button @click="syncToSupabase()" class="mt-2 text-[10px] bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full font-bold uppercase" x-text="isSyncing ? 'Syncing...' : 'Force Backup'"></button>
-                </div>
+            <div class="max-h-64 overflow-y-auto hide-scrollbar space-y-2 mb-6">
+                <template x-for="item in cart">
+                    <div class="flex justify-between text-xs text-slate-600"><span x-text="item.qty + 'x ' + item.name"></span><span x-text="formatCurrency(item.total)"></span></div>
+                </template>
+                <div class="flex justify-between font-black text-lg border-t pt-2 mt-2"><span>Total</span><span class="text-pink-500" x-text="formatCurrency(cartTotal)"></span></div>
             </div>
-            
-            <div class="bg-white p-6 rounded-3xl border">
-                <h3 class="font-black mb-4 flex items-center gap-2 text-slate-700"><span>📝</span> Record New Expense</h3>
-                <div class="flex flex-col md:flex-row gap-3">
-                    <input type="text" x-model="newExpName" placeholder="e.g. Cup Supplies" class="flex-1 bg-slate-50 border-none ring-1 ring-slate-200 rounded-2xl px-5 py-3 focus:ring-2 focus:ring-pink-500">
-                    <input type="number" x-model="newExpAmt" placeholder="Amount" class="md:w-32 bg-slate-50 border-none ring-1 ring-slate-200 rounded-2xl px-5 py-3 focus:ring-2 focus:ring-pink-500">
-                    <button @click="addExpense" class="bg-slate-900 text-white px-8 py-3 rounded-2xl font-bold hover:bg-slate-800 transition-all">Log Expense</button>
+            <div x-show="paymentMethod === 'cash'">
+                <div class="bg-slate-50 p-4 rounded-2xl mb-6">
+                    <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Customer Money</label>
+                    <input type="number" x-model="customerCash" class="w-full text-2xl font-black text-slate-800 bg-transparent border-none p-0 focus:ring-0 placeholder-slate-200" placeholder="0.00">
                 </div>
+                <div class="flex justify-between items-center mb-6 px-2"><span class="font-bold text-slate-400">Change</span><span class="text-2xl font-black" :class="changeAmount >= 0 ? 'text-emerald-500' : 'text-rose-500'" x-text="formatCurrency(changeAmount)"></span></div>
+                <button @click="confirmSale()" :disabled="changeAmount < 0" class="w-full bg-pink-500 py-4 rounded-2xl font-black text-lg text-white active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed">CONFIRM & PRINT</button>
             </div>
-        </div>
-    </main>
-
-    <nav class="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-white border border-slate-200 shadow-2xl rounded-[2rem] p-2 flex justify-between z-40">
-        <button @click="activeTab = 'pos'" :class="activeTab === 'pos' ? 'bg-pink-500 text-white' : 'text-slate-400'" class="flex-1 py-3 rounded-[1.8rem] flex flex-col items-center gap-1 transition-all">
-            <span class="text-xl">🍹</span><span class="text-[10px] font-black uppercase">Menu</span>
-        </button>
-        <button @click="activeTab = 'inventory'" :class="activeTab === 'inventory' ? 'bg-pink-500 text-white' : 'text-slate-400'" class="flex-1 py-3 rounded-[1.8rem] flex flex-col items-center gap-1 transition-all">
-            <span class="text-xl">📦</span><span class="text-[10px] font-black uppercase">Stock</span>
-        </button>
-        <button @click="activeTab = 'finance'" :class="activeTab === 'finance' ? 'bg-pink-500 text-white' : 'text-slate-400'" class="flex-1 py-3 rounded-[1.8rem] flex flex-col items-center gap-1 transition-all">
-            <span class="text-xl">📊</span><span class="text-[10px] font-black uppercase">Data</span>
-        </button>
-    </nav>
-
-    <div x-show="showModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="showModal = false"></div>
-        <div class="bg-white rounded-[2.5rem] w-full max-w-md relative z-10 overflow-hidden shadow-2xl">
-            <div class="bg-pink-500 p-6 text-white text-center">
-                <p class="text-xs font-black uppercase opacity-80">Customizing Order</p>
-                <h3 class="text-2xl font-black" x-text="selectedProduct?.name"></h3>
-            </div>
-            
-            <div class="p-8 space-y-6">
-                <div>
-                    <p class="text-xs font-black uppercase text-slate-400 mb-3 tracking-widest">Sugar Level</p>
-                    <div class="grid grid-cols-5 gap-2">
-                        <template x-for="lvl in ['0%', '25%', '50%', '75%', '100%']">
-                            <button @click="tempSugar = lvl" 
-                                :class="tempSugar === lvl ? 'bg-pink-500 text-white ring-4 ring-pink-100' : 'bg-slate-100 text-slate-600'"
-                                class="py-3 rounded-xl text-xs font-bold transition-all" x-text="lvl"></button>
-                        </template>
+            <div x-show="paymentMethod === 'gcash'" class="text-center">
+                <div class="bg-slate-50 p-4 rounded-3xl mb-6">
+                    <img 
+                        :src="qrImageUrl ? qrImageUrl : ''" 
+                        onerror="this.onerror=null; this.src='https://placehold.co/150x150?text=No+QR';" 
+                        class="w-48 h-48 mx-auto rounded-xl object-cover mb-2 border-4 border-white shadow-sm"
+                        x-show="qrImageUrl"
+                    >
+                    <div x-show="!qrImageUrl" class="w-48 h-48 mx-auto rounded-xl bg-slate-200 flex items-center justify-center mb-2">
+                        <span class="text-xs font-bold text-slate-400">No QR Code Set</span>
                     </div>
+                    <p class="text-[10px] text-slate-400 font-bold uppercase">Scan to Pay</p>
                 </div>
+                <button @click="confirmSale()" class="w-full bg-blue-500 py-4 rounded-2xl font-black text-lg text-white active:scale-95 transition-transform">CONFIRM PAYMENT</button>
+            </div>
+            <button @click="showCheckoutModal = false" class="w-full mt-4 text-slate-400 font-bold uppercase text-xs">Cancel</button>
+        </div>
+    </div>
 
-                <div>
-                    <p class="text-xs font-black uppercase text-slate-400 mb-3 tracking-widest">Add-ons (+$1.00)</p>
+    <div x-show="showTxModal" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200">
+        <div class="bg-white rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl animate-in zoom-in-95 duration-300 relative">
+            <button @click="showTxModal = false" class="absolute top-6 right-6 text-slate-300 hover:text-slate-600 text-2xl">✕</button>
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">🧾</div>
+                <h3 class="text-xl font-black text-slate-800">Transaction Details</h3>
+                <p class="text-xs font-bold text-slate-400 mt-1" x-text="new Date(selectedTransaction?.created_at).toLocaleString()"></p>
+                <p class="text-[10px] text-slate-300 font-mono mt-1" x-text="'ID: ' + (selectedTransaction?.id || '').split('-')[0]"></p>
+                
+                <div class="flex gap-2 justify-center mt-2">
+                    <span class="inline-block px-3 py-1 bg-slate-100 rounded-full text-[10px] font-black uppercase text-slate-500 tracking-wider" x-text="getStoreName(selectedTransaction?.store_id)"></span>
+                    <span x-show="selectedTransaction?.payment_method === 'gcash'" class="inline-block px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-wider">GCASH</span>
+                </div>
+            </div>
+            <div class="bg-slate-50 rounded-2xl p-6 mb-6 space-y-3 max-h-64 overflow-y-auto hide-scrollbar border border-slate-100">
+                <template x-for="item in parsedTransactionItems">
+                    <div class="flex justify-between items-start border-b border-slate-100 last:border-0 pb-2 last:pb-0">
+                        <div class="text-sm"><p class="font-bold text-slate-700" x-text="item.qty ? item.qty + 'x ' + item.name : item.name"></p><p class="text-[10px] text-slate-400" x-text="item.details"></p></div>
+                    </div>
+                </template>
+            </div>
+            <div class="space-y-2 pt-2 border-t border-slate-100">
+                <div class="flex justify-between items-center text-sm text-slate-500"><span>Payment Method</span><span class="font-bold uppercase" x-text="selectedTransaction?.payment_method || 'CASH'"></span></div>
+                <div class="flex justify-between items-center text-sm text-slate-500"><span>Cash Received</span><span class="font-bold" x-text="formatCurrency(selectedTransaction?.cash_received || 0)"></span></div>
+                <div class="flex justify-between items-center text-sm text-slate-500"><span>Change</span><span class="font-bold text-emerald-500" x-text="formatCurrency(selectedTransaction?.change || 0)"></span></div>
+                <div class="flex justify-between items-center text-xl font-black text-slate-800 pt-2 border-t border-slate-100/50"><span>Total</span><span x-text="formatCurrency(selectedTransaction?.amount)"></span></div>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="showInventoryModal" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200">
+        <div class="bg-white rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl animate-in zoom-in-95 duration-300 relative">
+            <button @click="showInventoryModal = false" class="absolute top-6 right-6 text-slate-300 hover:text-slate-600 text-2xl">✕</button>
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">📦</div>
+                <h3 class="text-xl font-black text-slate-800" x-text="selectedInventoryItem?.name"></h3>
+                <p class="text-[10px] uppercase font-bold text-slate-400 tracking-widest mt-1">Stock Details</p>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div class="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100">
+                    <p class="text-[9px] font-bold text-slate-400 uppercase">Current Qty</p>
+                    <p class="text-xl font-black text-slate-800" x-text="selectedInventoryItem?.qty.toFixed(2)"></p>
+                </div>
+                <div class="bg-slate-50 p-3 rounded-2xl text-center border border-slate-100">
+                    <p class="text-[9px] font-bold text-slate-400 uppercase">Branch</p>
+                    <p class="text-xs font-bold text-slate-800 truncate px-2" x-text="getStoreName(selectedInventoryItem?.store_id)"></p>
+                </div>
+            </div>
+
+            <div class="space-y-4 max-h-[35vh] overflow-y-auto hide-scrollbar pr-1 mb-4">
+                <div x-show="selectedInventoryItem?.related_menu_ids && selectedInventoryItem.related_menu_ids.length > 0">
+                    <p class="text-[10px] font-black text-slate-400 uppercase mb-2">Linked Menu Items</p>
                     <div class="flex flex-wrap gap-2">
-                        <template x-for="addon in ['Pearl', 'Nata', 'Pudding', 'None']">
-                            <button @click="tempAddon = addon" 
-                                :class="tempAddon === addon ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-100 text-slate-600'"
-                                class="px-4 py-2 rounded-xl text-xs font-bold transition-all" x-text="addon"></button>
+                        <template x-for="id in selectedInventoryItem?.related_menu_ids">
+                            <span class="bg-blue-50 text-blue-600 px-2 py-1 rounded-lg text-[10px] font-bold border border-blue-100" x-text="getProductNameById(id)"></span>
                         </template>
                     </div>
                 </div>
 
-                <button @click="confirmAddToCart()" 
-                    class="w-full bg-pink-500 text-white py-5 rounded-2xl font-black text-lg hover:bg-pink-600 shadow-xl shadow-pink-100 transition-all">
-                    ADD TO BASKET
-                </button>
+                <div x-show="selectedInventoryItem?.related_categories && selectedInventoryItem.related_categories.length > 0">
+                    <p class="text-[10px] font-black text-slate-400 uppercase mb-2">Linked Categories</p>
+                    <div class="flex flex-wrap gap-2">
+                        <template x-for="cat in selectedInventoryItem?.related_categories">
+                            <span class="bg-purple-50 text-purple-600 px-2 py-1 rounded-lg text-[10px] font-bold border border-purple-100" x-text="cat"></span>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <p class="text-[10px] font-black text-slate-400 uppercase mb-2">Deduction Logic</p>
+                    <template x-if="selectedInventoryItem?.is_sugar">
+                        <div>
+                            <p class="text-xs font-bold text-pink-500 mb-2">🍭 Sugar Ratios</p>
+                            <div class="grid grid-cols-5 gap-1 text-center">
+                                <template x-for="(ratio, level) in selectedInventoryItem?.sugar_ratios">
+                                    <div class="bg-white rounded p-1 border">
+                                        <p class="text-[8px] text-slate-400" x-text="level + '%'"></p>
+                                        <p class="text-[10px] font-bold" x-text="ratio"></p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="!selectedInventoryItem?.is_sugar">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-bold text-slate-600">Base Ratio per Item</span>
+                            <span class="text-lg font-black text-slate-800" x-text="selectedInventoryItem?.ratio"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest border-t border-slate-100 pt-4">
+                <div>
+                    <p>Created</p>
+                    <p class="text-slate-600" x-text="formatDate(selectedInventoryItem?.created_at)"></p>
+                </div>
+                <div>
+                    <p>Last Refilled</p>
+                    <p class="text-slate-600" x-text="selectedInventoryItem?.last_refilled ? formatDate(selectedInventoryItem.last_refilled) : 'Never'"></p>
+                </div>
+            </div>
+
+            <div class="flex gap-3 mt-6">
+                 <button @click="refillInventoryItem()" class="flex-1 bg-emerald-500 text-white py-3 rounded-xl font-bold text-xs uppercase shadow-lg shadow-emerald-200 active:scale-95 transition-transform">Refill Stock (+)</button>
+                 <button @click="deleteFromModal()" class="flex-1 bg-rose-100 text-rose-600 py-3 rounded-xl font-bold text-xs uppercase hover:bg-rose-200 transition-colors">Delete Item</button>
             </div>
         </div>
     </div>
 
     <script>
-        // Supabase Client Initialization
         const _supabase = supabase.createClient('https://oipfsuuzmtcfwzutfifo.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pcGZzdXV6bXRjZnd6dXRmaWZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NTcyNzIsImV4cCI6MjA4NTUzMzI3Mn0.J5R3c1zUfiLrww6us4zCaDRMkXPSWl0H_5aLdo0DdWM');
 
         function posApp() {
+
             return {
-                activeTab: 'pos',
-                activeCat: 'Milk Tea',
-                showModal: false,
-                isOnline: navigator.onLine,
-                isSyncing: false,
-                selectedProduct: null,
-                tempSugar: '100%',
-                tempAddon: 'Pearl',
-                categories: ['Milk Tea', 'Frappe', 'Yakult Series', 'Fruit Tea'],
+                isAuthenticated: false, currentUserRole: '', loginPin: '', selectedStoreId: '', currentStoreName: '',
+                activeTab: 'pos', activeCat: '', isOnline: navigator.onLine, isSyncing: false,
                 
-                products: [
-                    { id: 1, name: 'Okinawa', price: 12.00, stock: 100, category: 'Milk Tea', emoji: '🧋' },
-                    { id: 2, name: 'Winter Melon', price: 12.00, stock: 100, category: 'Milk Tea', emoji: '🧋' },
-                    { id: 3, name: 'Classic Pearl', price: 10.00, stock: 80, category: 'Milk Tea', emoji: '🧋' },
-                    { id: 4, name: 'Taro Blast', price: 15.00, stock: 50, category: 'Frappe', emoji: '🍧' },
-                    { id: 5, name: 'Chocolate Fudge', price: 16.00, stock: 40, category: 'Frappe', emoji: '🍫' },
-                    { id: 6, name: 'Strawberry Yakult', price: 14.00, stock: 60, category: 'Yakult Series', emoji: '🍓' },
-                    { id: 7, name: 'Green Apple Yakult', price: 14.00, stock: 60, category: 'Yakult Series', emoji: '🍏' },
-                    { id: 8, name: 'Mango Passion Fruit', price: 13.00, stock: 45, category: 'Fruit Tea', emoji: '🥭' }
-                ],
+                showModal: false, showCheckoutModal: false, modalStep: 1, isEditing: false, editingIndex: null, 
+                selectedProduct: null, tempAttr: null, showTxModal: false, selectedTransaction: null,
                 
-                cart: [],
-                history: [],
-                newExpName: '',
-                newExpAmt: null,
+                // MODAL STATE
+                showInventoryModal: false, selectedInventoryItem: null,
 
-                init() {
-                    const saved = localStorage.getItem('boba_pos_data');
-                    if (saved) {
-                        const data = JSON.parse(saved);
-                        this.products = data.products;
-                        this.history = data.history || [];
+                // PRINTER STATE
+                printerDevice: null,
+                printerCharacteristic: null,
+                printerConnected: false,
+                printerEnabled: false, // DEFAULT DISABLED
+
+                stores: [], categories: ['Add-ons', 'Milk Tea'], products: [], history: [], globalTransactions: [], allProducts: [],
+                newStore: { name: '', staff_pin: '1234' }, selectedSyncCategories: [],
+                newProd: { name: '', category: 'Milk Tea', enableSugar: false },
+                tempAttributes: [{ name: 'Regular', price: '' }], cart: [], 
+                
+                customNotePresets: ['Less Ice', 'No Ice', 'More Ice', 'Less Sweet', 'More Sweet'],
+                newNoteOption: '', customerCash: '', paymentMethod: 'cash',
+                qrImageUrl: '', isEditingProduct: false, editingProductId: null,
+                
+                // INVENTORY STATE
+                inventoryList: [],
+                inventoryBranchFilter: '',
+                newItemStock: { 
+                    name: '', qty: '', relatedMenuIds: [], relatedCategories: [], ratio: 1, 
+                    isSugar: false, sugarRatios: { "0": 0, "25": 0.25, "50": 0.5, "75": 0.75, "100": 1 },
+                    itemSearch: '', catSearch: '' 
+                },
+                configStoreId: '', configAllowedCats: [],
+                charts: { trend: null, topItems: null, category: null, itemPulse: null },
+                ownerStatFilter: 'all', dateFilter: 'all', sortOrder: 'desc', bestSellerName: 'No Data',
+                newCatName: '', searchTxDate: '', searchTxQuery: '', searchTxBranch: '',
+                empTimeFilter: '24hours', qtyItemName: '', itemPulseTotal: 0,
+                itemPulseSearch: '', showItemPulseDropdown: false, currentRenderId: 0,
+                modalQty: 1, modalSugar: '100%', modalNote: '',
+
+                async init() {
+                    const saved = localStorage.getItem('teacap_master_v10');
+                    if (saved) { 
+                        const d = JSON.parse(saved); 
+                        this.stores = d.stores || []; 
+                        this.inventoryList = d.inventoryList || [];
+                        if(d.customNotePresets) this.customNotePresets = d.customNotePresets;
+                        if(d.qrImageUrl) this.qrImageUrl = d.qrImageUrl;
+                        if(d.printerEnabled !== undefined) this.printerEnabled = d.printerEnabled; // Load toggle state
                     }
-
-                    // Network Listeners for Real-time status
-                    window.addEventListener('online', () => { 
-                        this.isOnline = true;
-                        this.syncToSupabase(); 
-                    });
-                    window.addEventListener('offline', () => { 
-                        this.isOnline = false; 
-                    });
-
-                    this.$watch('products', val => this.save());
-                    this.$watch('history', val => this.save());
-
-                    // Start sync on load
-                    this.syncToSupabase();
+                    if (navigator.onLine) await this.fetchGlobalData();
+                    if(this.stores.length > 0 && !this.inventoryBranchFilter) this.inventoryBranchFilter = this.stores[0].id;
+                    window.addEventListener('online', () => { this.isOnline = true; this.fetchGlobalData(); this.syncToSupabase(); });
                 },
 
-                save() {
-                    localStorage.setItem('boba_pos_data', JSON.stringify({
-                        products: this.products,
-                        history: this.history
-                    }));
+                // *** PRINTER LOGIC ***
+                formatRow(left, right) {
+                    const totalWidth = 32;
+                    // Ensure left and right are strings
+                    const leftStr = String(left);
+                    const rightStr = String(right);
+                    const spacesNeeded = totalWidth - leftStr.length - rightStr.length;
+                    return leftStr + " ".repeat(Math.max(1, spacesNeeded)) + rightStr + "\n";
                 },
 
-                async syncToSupabase() {
-                    if (!this.isOnline || this.isSyncing) return;
+                async connectPrinter() {
+                    try {
+                        this.printerDevice = await navigator.bluetooth.requestDevice({
+                            acceptAllDevices: true,
+                            optionalServices: [
+                                '0000ff00-0000-1000-8000-00805f9b34fb', 
+                                '49535343-fe7d-4ae5-8fa9-9fafd205e455', 
+                                '000018f0-0000-1000-8000-00805f9b34fb'
+                            ]
+                        });
+                        const server = await this.printerDevice.gatt.connect();
+                        const services = await server.getPrimaryServices();
+                        const service = services[0];
+                        const characteristics = await service.getCharacteristics();
+                        this.printerCharacteristic = characteristics.find(c => c.properties.write || c.properties.writeWithoutResponse);
+                        
+                        if (this.printerCharacteristic) {
+                            this.printerConnected = true;
+                            alert("Printer Connected: " + this.printerDevice.name);
+                        }
+                    } catch (error) {
+                        alert("Printer Error: " + error.message);
+                    }
+                },
 
-                    const unsynced = this.history.filter(h => !h.synced);
-                    if (unsynced.length === 0) return;
+                async printReceipt(txData) {
+                    if (!this.printerCharacteristic) return;
+                    
+                    const encoder = new TextEncoder();
+                    const init = new Uint8Array([0x1B, 0x40]); 
+                    const center = new Uint8Array([0x1B, 0x61, 0x01]); 
+                    const left = new Uint8Array([0x1B, 0x61, 0x00]); 
+                    const feed = new Uint8Array([0x0A, 0x0A, 0x0A]); 
 
-                    this.isSyncing = true;
+                    let receiptText = "";
+                    receiptText += "--------------------------------\n";
+                    receiptText += this.formatRow("Date: " + new Date().toLocaleDateString(), new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+                    receiptText += "TxID: " + txData.id.split('-')[0] + "\n";
+                    receiptText += "--------------------------------\n";
+                    
+                    txData.items.forEach(item => {
+                        receiptText += this.formatRow(item.qty + "x " + item.name, this.formatCurrency(item.total).replace('₱',''));
+                        if(item.attrName) receiptText += "   " + item.attrName + "\n";
+                        if(item.sugar) receiptText += "   Sugar: " + item.sugar + "\n";
+                        if(item.customNote) receiptText += "   Note: " + item.customNote + "\n";
+                    });
 
-                    const dataToUpload = unsynced.map(h => ({
-                        type: h.type,
-                        amount: h.amount,
-                        note: h.note,
-                        created_at: new Date(h.timestamp).toISOString()
-                    }));
+                    receiptText += "--------------------------------\n";
+                    receiptText += this.formatRow("TOTAL", this.formatCurrency(txData.total).replace('₱',''));
+                    receiptText += this.formatRow("PAYMENT (" + txData.method.toUpperCase() + ")", this.formatCurrency(txData.cash).replace('₱',''));
+                    receiptText += this.formatRow("CHANGE", this.formatCurrency(txData.change).replace('₱',''));
+                    receiptText += "--------------------------------\n";
+                    receiptText += "\n      THANK YOU FOR YOUR      \n";
+                    receiptText += "           BUSINESS!          \n";
 
                     try {
-                        const { error } = await _supabase
-                            .from('transactions')
-                            .insert(dataToUpload);
-
-                        if (!error) {
-                            this.history.forEach(h => { if (!h.synced) h.synced = true; });
-                            this.save();
-                        } else {
-                            console.error("Supabase Error:", error.message);
-                        }
-                    } catch (err) {
-                        console.error("Sync Exception:", err);
-                    } finally {
-                        this.isSyncing = false;
+                        await this.printerCharacteristic.writeValue(init);
+                        await this.printerCharacteristic.writeValue(center);
+                        await this.printerCharacteristic.writeValue(encoder.encode("TEACAP\n")); // Store Name
+                        await this.printerCharacteristic.writeValue(encoder.encode(this.currentStoreName + "\n\n")); // Branch
+                        await this.printerCharacteristic.writeValue(left);
+                        await this.printerCharacteristic.writeValue(encoder.encode(receiptText));
+                        await this.printerCharacteristic.writeValue(feed);
+                    } catch (e) {
+                        console.error("Print failed", e);
+                        alert("Print Failed. Check connection.");
                     }
                 },
 
-                get unsyncedCount() {
-                    return this.history.filter(h => !h.synced).length;
+                async fetchGlobalData() {
+                    const { data: storeData } = await _supabase.from('stores').select('*');
+                    if (storeData) {
+                        this.stores = storeData;
+                        if(!this.inventoryBranchFilter && this.stores.length > 0) this.inventoryBranchFilter = this.stores[0].id;
+                    }
+                    const { data: catData } = await _supabase.from('menu_categories').select('name');
+                    if (catData) this.categories = catData.map(c => c.name);
+                    const { data: allP } = await _supabase.from('menu_products').select('*');
+                    if(allP) this.allProducts = allP;
+                    const { data: invData } = await _supabase.from('inventory').select('*');
+                    if (invData) this.inventoryList = invData;
+                    this.saveLocal();
                 },
 
-                checkout() {
-                    this.cart.forEach(item => {
-                        const prod = this.products.find(p => p.id === item.id);
-                        if(prod) prod.stock--;
-                    });
-
-                    this.history.push({
-                        type: 'sale',
-                        amount: this.cartTotal,
-                        note: `Sale: ${this.cart.length} Drink(s)`,
-                        timestamp: Date.now(),
-                        synced: false 
-                    });
-
-                    this.cart = [];
-                    this.syncToSupabase(); // Immediate Sync
-                    alert('Success! 🍹 Order added locally and syncing...');
+                get filteredInventory() { return this.inventoryList.filter(item => item.store_id === this.inventoryBranchFilter); },
+                viewInventoryDetails(item) { this.selectedInventoryItem = item; this.showInventoryModal = true; },
+                
+                async refillInventoryItem() {
+                    const amountStr = prompt("Enter amount to add to stock:");
+                    if(!amountStr) return;
+                    const amount = parseFloat(amountStr);
+                    if(isNaN(amount)) return alert("Invalid number");
+                    const newQty = this.selectedInventoryItem.qty + amount;
+                    const now = new Date().toISOString();
+                    this.selectedInventoryItem.qty = newQty;
+                    this.selectedInventoryItem.last_refilled = now;
+                    const idx = this.inventoryList.findIndex(x => x.id === this.selectedInventoryItem.id);
+                    if(idx > -1) { this.inventoryList[idx].qty = newQty; this.inventoryList[idx].last_refilled = now; }
+                    const { error } = await _supabase.from('inventory').update({ qty: newQty, last_refilled: now }).eq('id', this.selectedInventoryItem.id);
+                    if(error) alert("Error saving refill: " + error.message); else alert("Stock Refilled!");
                 },
 
-                addExpense() {
-                    if(!this.newExpName || !this.newExpAmt) return;
-                    this.history.push({
-                        type: 'expense',
-                        amount: parseFloat(this.newExpAmt),
-                        note: this.newExpName,
-                        timestamp: Date.now(),
-                        synced: false
-                    });
-                    this.newExpName = '';
-                    this.newExpAmt = null;
-                    this.syncToSupabase(); // Immediate Sync
+                async deleteFromModal() {
+                    if(confirm("Delete this item permanently?")) {
+                        await this.deleteInventoryItem(this.selectedInventoryItem.id);
+                        this.showInventoryModal = false;
+                    }
                 },
 
-                // Getters & UI Logic
-                get filteredProducts() { return this.products.filter(p => p.category === this.activeCat); },
-                openCustomizer(product) { if(product.stock <= 0) return alert('Out of Stock!'); this.selectedProduct = product; this.showModal = true; },
-                confirmAddToCart() { 
-                    let price = this.selectedProduct.price;
-                    if(this.tempAddon !== 'None') price += 1.0;
-                    this.cart.push({ id: this.selectedProduct.id, name: this.selectedProduct.name, total: price, sugar: this.tempSugar, addon: this.tempAddon });
-                    this.showModal = false;
+                formatDate(d) {
+                    if(!d) return '-';
+                    return new Date(d).toLocaleDateString() + ' ' + new Date(d).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                 },
-                removeFromCart(index) { this.cart.splice(index, 1); },
-                get cartTotal() { return this.cart.reduce((sum, item) => sum + item.total, 0); },
-                get totalSales() { return this.history.filter(h => h.type === 'sale').reduce((sum, h) => sum + h.amount, 0); },
-                get totalExpenses() { return this.history.filter(h => h.type === 'expense').reduce((sum, h) => sum + h.amount, 0); },
-                get netProfit() { return this.totalSales - this.totalExpenses; },
-                formatCurrency(val) { return '₱' + parseFloat(val).toFixed(2); }
+
+                get filteredLinkableItems() {
+                    let items = this.allProducts.filter(p => p.store_id === this.inventoryBranchFilter);
+                    if (this.newItemStock.itemSearch) {
+                        const q = this.newItemStock.itemSearch.toLowerCase();
+                        items = items.filter(p => p.name.toLowerCase().includes(q));
+                    }
+                    return items.sort((a, b) => this.newItemStock.relatedMenuIds.includes(b.id) - this.newItemStock.relatedMenuIds.includes(a.id));
+                },
+
+                get filteredLinkableCategories() {
+                    let cats = this.categories.slice();
+                    if (this.newItemStock.catSearch) {
+                        const q = this.newItemStock.catSearch.toLowerCase();
+                        cats = cats.filter(c => c.toLowerCase().includes(q));
+                    }
+                    return cats.sort((a, b) => this.newItemStock.relatedCategories.includes(b) - this.newItemStock.relatedCategories.includes(a));
+                },
+
+                async addInventoryItem() {
+                    if (!this.newItemStock.name || !this.newItemStock.qty || !this.inventoryBranchFilter) { alert("Please fill in Name and Quantity."); return; }
+                    const payload = {
+                        name: this.newItemStock.name, qty: parseFloat(this.newItemStock.qty), store_id: this.inventoryBranchFilter,
+                        related_menu_ids: this.newItemStock.relatedMenuIds, related_categories: this.newItemStock.relatedCategories,
+                        ratio: this.newItemStock.isSugar ? 0 : parseFloat(this.newItemStock.ratio) || 1,
+                        is_sugar: this.newItemStock.isSugar, sugar_ratios: this.newItemStock.isSugar ? this.newItemStock.sugarRatios : null,
+                        created_at: new Date().toISOString()
+                    };
+                    const { data, error } = await _supabase.from('inventory').insert([payload]).select();
+                    if (!error && data) {
+                        this.inventoryList.push(data[0]);
+                        this.newItemStock = { name: '', qty: '', relatedMenuIds: [], relatedCategories: [], ratio: 1, isSugar: false, itemSearch: '', catSearch: '', sugarRatios: { "0": 0, "25": 0.25, "50": 0.5, "75": 0.75, "100": 1 } };
+                        alert("Stock Linked successfully!");
+                    } else { alert("Error: " + error.message); }
+                },
+
+                async deleteInventoryItem(id) {
+                    if (confirm("Remove this stock entry permanently?")) {
+                        const { error } = await _supabase.from('inventory').delete().eq('id', id);
+                        if (!error) { this.inventoryList = this.inventoryList.filter(item => item.id !== id); }
+                    }
+                },
+
+                async confirmSale() {
+                    if (this.cart.length === 0) return;
+
+                    // NEW PRINTER CHECK
+                    if (this.printerEnabled && !this.printerConnected) {
+                        alert("⚠️ Printer Enabled but NOT connected! Please connect printer first or disable printing.");
+                        return;
+                    }
+
+                    try {
+                        for (const item of this.cart) {
+                            const itemCategory = this.allProducts.find(p => p.id == item.id)?.category;
+                            const stockItems = this.inventoryList.filter(s => s.store_id == this.selectedStoreId && ((s.related_menu_ids && s.related_menu_ids.includes(item.id)) || (s.related_categories && s.related_categories.includes(itemCategory))));
+                            for (const stock of stockItems) {
+                                let deduction = 0;
+                                if (stock.is_sugar) {
+                                    const level = (item.sugar || "100%").replace('%', '');
+                                    const specificRatio = stock.sugar_ratios ? parseFloat(stock.sugar_ratios[level]) : 0;
+                                    deduction = specificRatio * item.qty;
+                                } else { deduction = stock.ratio * item.qty; }
+                                const newQty = stock.qty - deduction;
+                                const { error: invError } = await _supabase.from('inventory').update({ qty: newQty }).eq('id', stock.id);
+                                if (invError) throw invError;
+                                stock.qty = newQty; 
+                            }
+                        }
+
+                        const noteString = this.cart.map(i => {
+                            let details = `${i.qty}x ${i.name} (${i.attrName})`;
+                            if (i.sugar) details += ` | ${i.sugar}`;
+                            if (i.customNote) details += ` | ${i.customNote}`;
+                            return details;
+                        }).join(', ');
+
+                        let finalCash = parseFloat(this.customerCash) || 0;
+                        let finalChange = this.changeAmount;
+                        if (this.paymentMethod === 'gcash') { finalCash = this.cartTotal; finalChange = 0; }
+
+                        const { data: txData, error: txError } = await _supabase.from('transactions').insert([{
+                            type: 'sale', amount: this.cartTotal, note: noteString,
+                            cash_received: finalCash, change: finalChange, payment_method: this.paymentMethod,
+                            store_id: this.selectedStoreId, created_at: new Date().toISOString()
+                        }]).select();
+
+                        if (txError) throw txError;
+
+                        if (txData) {
+                            const syncedTx = { ...txData[0], synced: true };
+                            this.history.push(syncedTx);
+                            if (this.currentUserRole === 'employee') this.globalTransactions.unshift(syncedTx);
+                            
+                            // AUTO PRINT RECEIPT
+                            if (this.printerEnabled && this.printerConnected) {
+                                await this.printReceipt({
+                                    id: syncedTx.id,
+                                    date: syncedTx.created_at,
+                                    items: [...this.cart],
+                                    total: this.cartTotal,
+                                    cash: finalCash,
+                                    change: finalChange,
+                                    method: this.paymentMethod
+                                });
+                            }
+                        }
+
+                        this.cart = [];
+                        this.showCheckoutModal = false;
+                        this.saveLocal();
+                        alert('Sale Confirmed!'); // Removed "Receipt Sent" message since it might confuse if print fails silently, but kept success alert.
+
+                    } catch (err) {
+                        console.error("Sale Error:", err);
+                        alert("Failed to complete sale: " + err.message);
+                    }
+                },
+
+                getProductNameById(id) {
+                    if (!id) return "-";
+                    const p = this.allProducts.find(x => x.id == id);
+                    return p ? p.name : "-";
+                },
+
+                async fetchStoreMenu() {
+                    if (!this.selectedStoreId) return;
+                    const { data } = await _supabase.from('menu_products').select('*').eq('store_id', this.selectedStoreId);
+                    if (data) {
+                        this.products = data.map(p => ({ id: p.id, name: p.name, category: p.category, enableSugar: p.enable_sugar, attributes: p.attributes }));
+                        this.currentStoreName = this.stores.find(s => s.id === this.selectedStoreId)?.name || '';
+                    }
+                    if(this.currentUserRole === 'employee') {
+                        const { data: hData } = await _supabase.from('transactions').select('*').eq('store_id', this.selectedStoreId).order('created_at', {ascending: false});
+                        if(hData) this.globalTransactions = hData;
+                    }
+                    if (this.visibleCategories.length > 0) {
+                        this.activeCat = this.visibleCategories[0];
+                    }
+                },
+
+                login() {
+                    if (this.loginPin === '0000') {
+                        this.currentUserRole = 'owner';
+                        this.isAuthenticated = true;
+                        this.selectedStoreId = this.stores[0]?.id || ''; 
+                        this.activeTab = 'stats'; 
+                        this.fetchStoreMenu(); 
+                        this.destroyCharts();
+                        this.$nextTick(() => { this.refreshStats(); });
+                    } else {
+                        const store = this.stores.find(s => s.id === this.selectedStoreId);
+                        if (store && this.loginPin === store.staff_pin) {
+                            this.currentUserRole = 'employee';
+                            this.isAuthenticated = true;
+                            this.activeTab = 'pos';
+                            this.currentStoreName = store.name;
+                            this.fetchStoreMenu();
+                        } else alert("Invalid PIN");
+                    }
+                    this.loginPin = '';
+                },
+
+                loadStoreConfig() {
+                    if (!this.configStoreId) return;
+                    const s = this.stores.find(x => x.id === this.configStoreId);
+                    if (s) {
+                        this.configAllowedCats = s.allowed_categories || [...this.categories];
+                    }
+                },
+                
+                async saveStoreConfig() {
+                    if (!this.configStoreId) return;
+                    const sIndex = this.stores.findIndex(x => x.id === this.configStoreId);
+                    if (sIndex > -1) {
+                        this.stores[sIndex].allowed_categories = this.configAllowedCats;
+                        if (this.isOnline) {
+                            await _supabase.from('stores').update({ allowed_categories: this.configAllowedCats }).eq('id', this.configStoreId);
+                        }
+                        this.saveLocal();
+                        alert("Branch menu visibility updated!");
+                    }
+                },
+
+                get visibleCategories() {
+                    if (this.currentUserRole === 'owner') return this.categories;
+                    const currentStore = this.stores.find(s => s.id === this.selectedStoreId);
+                    if (!currentStore || !currentStore.allowed_categories) return this.categories; 
+                    return this.categories.filter(c => currentStore.allowed_categories.includes(c));
+                },
+
+                async deleteStore(id) {
+                    if (!confirm("Are you sure?")) return;
+                    this.stores = this.stores.filter(s => s.id !== id);
+                    if (this.isOnline) await _supabase.from('stores').delete().eq('id', id);
+                    this.saveLocal();
+                },
+
+                async uploadQR(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    const fileName = `qr_${Date.now()}.png`;
+                    const { data, error } = await _supabase.storage.from('images').upload(fileName, file);
+                    if (error) { alert('Upload failed: ' + error.message); return; }
+                    const { data: publicUrl } = _supabase.storage.from('images').getPublicUrl(fileName);
+                    this.qrImageUrl = publicUrl.publicUrl;
+                    this.saveLocal();
+                    alert('QR Updated!');
+                },
+
+                async editCategory(oldName) {
+                    const newName = prompt("Rename Category:", oldName);
+                    if (newName && newName !== oldName) {
+                        if(confirm(`Rename to ${newName}?`)) {
+                            this.categories[this.categories.indexOf(oldName)] = newName;
+                            if (this.isOnline) {
+                                await _supabase.from('menu_categories').update({ name: newName }).eq('name', oldName);
+                                await _supabase.from('menu_products').update({ category: newName }).eq('category', oldName);
+                            }
+                            this.fetchGlobalData();
+                        }
+                    }
+                },
+
+                loadProductForEdit(p) {
+                    this.isEditingProduct = true;
+                    this.editingProductId = p.id;
+                    this.newProd = { name: p.name, category: p.category, enableSugar: p.enableSugar };
+                    this.tempAttributes = JSON.parse(JSON.stringify(p.attributes));
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                },
+
+                cancelEditProduct() {
+                    this.isEditingProduct = false;
+                    this.editingProductId = null;
+                    this.newProd = { name: '', category: this.categories[0], enableSugar: false };
+                    this.tempAttributes = [{ name: 'Regular', price: '' }];
+                },
+
+                async updateProduct() {
+                    const pData = { name: this.newProd.name, category: this.newProd.category, enable_sugar: this.newProd.enableSugar, attributes: this.tempAttributes.map(a => ({ name: a.name, price: parseFloat(a.price) || 0 })) };
+                    if (this.isOnline) await _supabase.from('menu_products').update(pData).eq('id', this.editingProductId);
+                    this.fetchStoreMenu();
+                    this.cancelEditProduct();
+                    alert("Updated!");
+                },
+
+                addNotePreset() { if(!this.newNoteOption || this.customNotePresets.includes(this.newNoteOption)) return; this.customNotePresets.push(this.newNoteOption); this.newNoteOption = ''; this.saveLocal(); },
+                deleteNotePreset(note) { if(confirm("Remove?")) { this.customNotePresets = this.customNotePresets.filter(n => n !== note); this.saveLocal(); } },
+
+                openCustomizer(p) { this.modalStep = 1; this.selectedProduct = p; this.showModal = true; this.modalQty = 1; this.modalSugar = '100%'; this.modalNote = ''; this.tempAttr = null; },
+                handleAttributeSelection(attr) { this.tempAttr = attr; if (this.selectedProduct.enableSugar) this.modalStep = 2; else { this.modalSugar = ''; this.modalStep = 2; } },
+                finalizeSelection() {
+                    const totalItemPrice = (this.tempAttr.price) * this.modalQty;
+                    const newItem = { id: this.selectedProduct.id, name: this.selectedProduct.name, attrName: this.tempAttr.name, total: totalItemPrice, pricePerUnit: this.tempAttr.price, sugar: this.selectedProduct.enableSugar ? this.modalSugar : '', qty: this.modalQty, customNote: this.modalNote };
+                    const existingIndex = this.cart.findIndex(i => i.id === newItem.id && i.attrName === newItem.attrName && i.sugar === newItem.sugar && i.customNote === newItem.customNote);
+                    if (this.isEditing) { this.cart[this.editingIndex] = newItem; this.isEditing = false; } else if (existingIndex > -1) { this.cart[existingIndex].qty += newItem.qty; this.cart[existingIndex].total += newItem.total; } else { this.cart.push(newItem); }
+                    this.showModal = false; 
+                },
+                removeFromCart(i) { this.cart.splice(i, 1); },
+                
+                openCheckoutModal() { this.customerCash = ''; this.paymentMethod = 'cash'; this.showCheckoutModal = true; },
+                get changeAmount() { const cash = parseFloat(this.customerCash) || 0; return cash - this.cartTotal; },
+                
+                get cartTotal() { return this.cart.reduce((s, i) => s + i.total, 0); },
+                get filteredProducts() { 
+                    if (!this.visibleCategories.includes(this.activeCat)) return [];
+                    return this.products.filter(p => p.category === this.activeCat); 
+                },
+                viewTransactionDetails(t) { this.selectedTransaction = t; this.showTxModal = true; },
+                get parsedTransactionItems() { if (!this.selectedTransaction) return []; return this.selectedTransaction.note.split(', ').map(itemStr => { const qtyMatch = itemStr.match(/^(\d+)x\s+(.*)/); if (qtyMatch) return { qty: qtyMatch[1], name: qtyMatch[2].split('|')[0].trim(), details: qtyMatch[2] }; return { qty: 1, name: itemStr.split('|')[0].trim(), details: itemStr }; }); },
+
+                get filteredEmployeeTransactions() {
+                    let txs = this.globalTransactions;
+                    if (this.searchTxQuery) { const q = this.searchTxQuery.toLowerCase(); txs = txs.filter(t => t.note.toLowerCase().includes(q)); }
+                    const now = new Date();
+                    if (this.empTimeFilter === '24hours') txs = txs.filter(t => new Date(t.created_at) >= new Date(now.getTime() - 24 * 60 * 60 * 1000));
+                    else if (this.empTimeFilter === '7days') txs = txs.filter(t => new Date(t.created_at) >= new Date(now.setDate(now.getDate() - 7)));
+                    return txs.sort((a, b) => this.sortOrder === 'desc' ? new Date(b.created_at) - new Date(a.created_at) : new Date(a.created_at) - new Date(b.created_at)); 
+                },
+
+                calculateStats() { let items = this.filteredOwnerTransactions; if (items.length === 0) { this.bestSellerName = "No Data"; return; } const counts = {}; items.forEach(t => { t.note.split(', ').forEach(itemStr => { let qty = 1; let name = itemStr; const qtyMatch = itemStr.match(/^(\d+)x\s+(.*)/); if (qtyMatch) { qty = parseInt(qtyMatch[1]); name = qtyMatch[2]; } const cleanName = name.split(' (')[0].trim(); counts[cleanName] = (counts[cleanName] || 0) + qty; }); }); this.bestSellerName = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b, 'No Data'); },
+                async refreshStats() { if (this.currentUserRole !== 'owner') return; this.currentRenderId++; const thisRenderId = this.currentRenderId; this.destroyCharts(); const { data } = await _supabase.from('transactions').select('*').order('created_at', { ascending: false }); if (this.currentRenderId !== thisRenderId) return; if (data) { this.globalTransactions = data; this.calculateStats(); this.$nextTick(() => { if (this.currentRenderId !== thisRenderId) return; setTimeout(() => { if (this.currentRenderId !== thisRenderId) return; this.renderAllCharts(); }, 50); }); } },
+                destroyCharts() { const chartIds = ['trendChart', 'topItemsChart', 'categoryChart', 'itemPulseChart']; chartIds.forEach(id => { const existingChart = Chart.getChart(id); if (existingChart) existingChart.destroy(); }); this.charts = { trend: null, topItems: null, category: null, itemPulse: null }; },
+                renderAllCharts() { if (!document.getElementById('trendChart')) return; this.destroyCharts(); this.renderTrendChart(); this.renderTopItemsChart(); this.renderCategoryChart(); this.renderItemPulseChart(); },
+                
+                get filteredOwnerTransactions() { let txs = this.globalTransactions; if (this.ownerStatFilter !== 'all') { txs = txs.filter(t => t.store_id === this.ownerStatFilter); } const now = new Date(); if (this.dateFilter === 'today') { txs = txs.filter(t => t.created_at.startsWith(now.toISOString().split('T')[0])); } else if (this.dateFilter === '7days') { const d = new Date(now); d.setDate(d.getDate() - 7); txs = txs.filter(t => new Date(t.created_at) >= d); } return txs; },
+                get filteredSalesTotal() { return this.filteredOwnerTransactions.reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0); },
+                get searchedTransactions() { let txs = this.globalTransactions; if (this.searchTxDate) txs = txs.filter(t => t.created_at.startsWith(this.searchTxDate)); if (this.searchTxBranch) txs = txs.filter(t => t.store_id === this.searchTxBranch); if (this.searchTxQuery) { const q = this.searchTxQuery.toLowerCase(); txs = txs.filter(t => t.note.toLowerCase().includes(q)); } return txs.sort((a, b) => { return this.sortOrder === 'desc' ? new Date(b.created_at) - new Date(a.created_at) : new Date(a.created_at) - new Date(b.created_at); }); },
+                get uniqueProductNames() { const names = new Set(); if (this.allProducts) this.allProducts.forEach(p => names.add(p.name)); this.globalTransactions.forEach(t => { t.note.split(',').forEach(part => { names.add(part.trim().split(' (')[0]); }); }); return Array.from(names).sort(); },
+                getStoreName(id) { return this.stores.find(s => s.id === id)?.name || 'Unknown'; },
+                
+                logout() { this.destroyCharts(); this.isAuthenticated = false; this.products = []; this.cart = []; },
+                saveLocal() { localStorage.setItem('teacap_master_v10', JSON.stringify({ stores: this.stores, customNotePresets: this.customNotePresets, qrImageUrl: this.qrImageUrl, inventoryList: this.inventoryList, printerEnabled: this.printerEnabled })); },
+                
+                async addCategory() { if (!this.newCatName || this.categories.includes(this.newCatName)) return; this.categories.push(this.newCatName); if (this.isOnline) await _supabase.from('menu_categories').insert([{ name: this.newCatName }]); this.newCatName = ''; },
+                async deleteCategory(name) { if(!confirm("Delete Category?")) return; this.categories = this.categories.filter(c => c !== name); if (this.isOnline) await _supabase.from('menu_categories').delete().eq('name', name); },
+                async addStore() { if (!this.newStore.name) return; const { data } = await _supabase.from('stores').insert([this.newStore]).select(); if (data) { this.stores.push(data[0]); this.newStore = { name: '', staff_pin: '1234' }; alert("Deployed!"); } },
+                async addProduct() { const pData = { name: this.newProd.name, category: this.newProd.category, enable_sugar: this.newProd.enableSugar, store_id: this.selectedStoreId, attributes: this.tempAttributes.map(a => ({ name: a.name, price: parseFloat(a.price) || 0 })) }; const { data } = await _supabase.from('menu_products').insert([pData]).select(); if (data) { this.products.push({ ...pData, id: data[0].id, enableSugar: data[0].enable_sugar }); this.allProducts.push(data[0]); } this.newProd.name = ''; this.tempAttributes = [{ name: 'Regular', price: '' }]; },
+                async deleteProduct(id) { if(confirm("Delete?")) { this.products = this.products.filter(p => p.id !== id); await _supabase.from('menu_products').delete().eq('id', id); } },
+                async syncToSupabase() { const unsynced = this.history.filter(h => !h.synced); if (unsynced.length > 0 && this.isOnline) { this.isSyncing = true; await _supabase.from('transactions').insert(unsynced.map(h => ({ type: 'sale', amount: h.amount, note: h.note, cash_received: h.cash_received, change: h.change, payment_method: h.payment_method, created_at: new Date(h.timestamp).toISOString(), store_id: this.selectedStoreId }))); this.history.forEach(h => h.synced = true); this.isSyncing = false; this.refreshStats(); } },
+                
+                addAttributeField() { this.tempAttributes.push({ name: '', price: '' }); },
+                editCartItem(i) { this.isEditing = true; this.editingIndex = i; const item = this.cart[i]; this.selectedProduct = this.products.find(p => p.name === item.name); this.modalQty = item.qty; this.modalSugar = item.sugar; this.modalNote = item.customNote || ''; this.showModal = true; this.modalStep = 1; },
+                get unsyncedCount() { return this.history.filter(h => !h.synced).length; },
+                formatCurrency(v) { return '₱' + parseFloat(v).toFixed(2); },
+
+                get filteredItemPulseList() { const query = this.itemPulseSearch.toLowerCase(); return this.uniqueProductNames.filter(i => i.toLowerCase().includes(query)); },
+                getChartLabelsAndData(data, itemName) { const range = this.dateFilter === 'all' ? '30days' : this.dateFilter; let labels = [], keys = [], counts = []; const searchName = itemName.toLowerCase(); const now = new Date(); if (range === 'today' || range === 'yesterday') { for(let i=0; i<24; i++) { const h = i.toString().padStart(2, '0') + ":00"; labels.push(h); keys.push(h); } let dayTxs = []; if (range === 'today') { const today = now.toISOString().split('T')[0]; dayTxs = data.filter(t => t.created_at.startsWith(today)); } else { const yest = new Date(now); yest.setDate(yest.getDate() - 1); dayTxs = data.filter(t => t.created_at.startsWith(yest.toISOString().split('T')[0])); } const dataMap = {}; dayTxs.forEach(t => { if(t.note.toLowerCase().includes(searchName)) { const d = new Date(t.created_at); const k = d.getHours().toString().padStart(2, '0') + ":00"; dataMap[k] = (dataMap[k] || 0) + 1; }}); counts = keys.map(k => dataMap[k] || 0); } else { const days = range === '7days' ? 7 : 30; const d = new Date(now); d.setDate(d.getDate() - days); const rangeTxs = data.filter(t => new Date(t.created_at) >= d); for(let i=days-1; i>=0; i--) { const tempD = new Date(); tempD.setDate(tempD.getDate() - i); const dateStr = tempD.toISOString().split('T')[0]; labels.push(tempD.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })); keys.push(dateStr); } const dataMap = {}; rangeTxs.forEach(t => { if(t.note.toLowerCase().includes(searchName)) { const k = t.created_at.split('T')[0]; dataMap[k] = (dataMap[k] || 0) + 1; }}); counts = keys.map(k => dataMap[k] || 0); } return { labels, counts }; },
+                renderItemPulseChart() { const ctx = document.getElementById('itemPulseChart'); if (!ctx) return; if (!this.qtyItemName) { this.itemPulseTotal = 0; return; } const { labels, counts } = this.getChartLabelsAndData(this.filteredOwnerTransactions, this.qtyItemName); this.itemPulseTotal = counts.reduce((a,b) => a+b, 0); this.charts.itemPulse = new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: [{ data: counts, backgroundColor: '#ffffff', borderRadius: 4, barThickness: 6 }] }, plugins: [ChartDataLabels], options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, datalabels: { color: '#ffffff', anchor: 'end', align: 'top', offset: 0, font: { weight: 'bold', size: 10 }, formatter: (value) => value > 0 ? value : '' }, tooltip: { backgroundColor: 'rgba(255, 255, 255, 0.9)', titleColor: '#ec4899', bodyColor: '#000', displayColors: false } }, scales: { x: { display: false }, y: { display: false, min: 0 } }, layout: { padding: { top: 20 } } } }); },
+                renderTrendChart() { const ctx = document.getElementById('trendChart'); if (!ctx) return; const hours = {}; this.filteredOwnerTransactions.forEach(t => { const h = new Date(t.created_at).getHours() + ":00"; hours[h] = (hours[h] || 0) + t.amount; }); this.charts.trend = new Chart(ctx, { type: 'line', data: { labels: Object.keys(hours).sort(), datasets: [{ label: 'Sales', data: Object.values(hours), borderColor: '#ec4899', tension: 0.4, fill: true, backgroundColor: 'rgba(236, 72, 153, 0.1)' }] }, options: { responsive: true, maintainAspectRatio: false } }); },
+                renderTopItemsChart() { const ctx = document.getElementById('topItemsChart'); if (!ctx) return; const counts = {}; this.filteredOwnerTransactions.forEach(t => { t.note.split(', ').forEach(itemStr => { const qtyMatch = itemStr.match(/^(\d+)x\s+(.*)/); let qty = qtyMatch ? parseInt(qtyMatch[1]) : 1; let name = qtyMatch ? qtyMatch[2] : itemStr; const n = name.split(' (')[0].trim(); counts[n] = (counts[n] || 0) + qty; }); }); const sorted = Object.entries(counts).sort((a,b) => b[1] - a[1]).slice(0, 5); this.charts.topItems = new Chart(ctx, { type: 'doughnut', data: { labels: sorted.map(i => i[0]), datasets: [{ data: sorted.map(i => i[1]), backgroundColor: ['#ec4899', '#f472b6', '#fbcfe8', '#10b981', '#34d399'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } } }); },
+                renderCategoryChart() { const ctx = document.getElementById('categoryChart'); if (!ctx) return; const catCounts = {}; this.filteredOwnerTransactions.forEach(t => { t.note.split(', ').forEach(itemStr => { const qtyMatch = itemStr.match(/^(\d+)x\s+(.*)/); let qty = qtyMatch ? parseInt(qtyMatch[1]) : 1; let name = qtyMatch ? qtyMatch[2] : itemStr; const itemName = name.split(' (')[0].trim(); const product = this.allProducts.find(p => p.name === itemName); const cat = product ? product.category : 'Unknown'; catCounts[cat] = (catCounts[cat] || 0) + qty; }); }); this.charts.category = new Chart(ctx, { type: 'bar', data: { labels: Object.keys(catCounts), datasets: [{ label: 'Qty', data: Object.values(catCounts), backgroundColor: '#8b5cf6', borderRadius: 8 }] }, options: { responsive: true, maintainAspectRatio: false } }); }
             }
         }
     </script>
